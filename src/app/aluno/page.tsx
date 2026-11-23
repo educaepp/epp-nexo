@@ -7,29 +7,31 @@ import {
   Home, Layers, PenTool, BarChart2, BookOpen, Clock, 
   ChevronDown, ChevronRight, Flame, CheckCircle2, 
   XCircle, FileText, ArrowRight, LogOut, Menu, X,
-  Printer, CheckSquare, Square, Sparkles
+  Printer, CheckSquare, Square, Sparkles, Trophy, Bot, HelpCircle
 } from 'lucide-react';
 
 export default function PortalAluno() {
   const router = useRouter();
   const [usuario, setUsuario] = useState<any>(null);
-  const [secaoAtiva, setSecaoAtiva] = useState<'inicio' | 'conteudo' | 'redacao' | 'simulados' | 'biblioteca' | 'desempenho'>('inicio');
+  const [secaoAtiva, setSecaoAtiva] = useState<'inicio' | 'conteudo' | 'redacao' | 'simulados' | 'biblioteca' | 'ranking' | 'desempenho'>('inicio');
   const [materiaSelecionada, setMateriaSelecionada] = useState<string>('Matemática');
   const [menuConteudosAberto, setMenuConteudosAberto] = useState(true);
   const [menuMobileAberto, setMenuMobileAberto] = useState(false);
 
-  // Dados reais do Supabase
   const [atividades, setAtividades] = useState<any[]>([]);
   const [simulados, setSimulados] = useState<any[]>([]);
   const [temaAtivo, setTemaAtivo] = useState<any>(null);
   const [minhasRedacoes, setMinhasRedacoes] = useState<any[]>([]);
   const [livros, setLivros] = useState<any[]>([]);
+  const [rankingAlunos, setRankingAlunos] = useState<any[]>([]);
 
-  // Respostas interativas e XP
+  // Respostas interativas, XP e Tutor IA
   const [respostasAluno, setRespostasAluno] = useState<Record<string, string>>({});
   const [acertosSessao, setAcertosSessao] = useState(0);
+  const [explicacoesTutor, setExplicacoesTutor] = useState<Record<string, string>>({});
+  const [carregandoTutor, setCarregandoTutor] = useState<string | null>(null);
 
-  // Seleção de Questões para Apostila PDF Personalizada
+  // Seleção para PDF Personalizado
   const [selecionadasPdf, setSelecionadasPdf] = useState<string[]>([]);
 
   // Simulado Cronometrado
@@ -41,10 +43,11 @@ export default function PortalAluno() {
   // Leitor de PDF Embutido
   const [pdfAberto, setPdfAberto] = useState<any>(null);
 
-  // Oficina de Redação
+  // Oficina de Redação + Correção Instantânea IA
   const [escrevendoRedacao, setEscrevendoRedacao] = useState(false);
   const [textoRedacao, setTextoRedacao] = useState('');
-  const [redacaoEnviada, setRedacaoEnviada] = useState(false);
+  const [enviandoRedacao, setEnviandoRedacao] = useState(false);
+  const [avaliacaoIaInstantanea, setAvaliacaoIaInstantanea] = useState<any>(null);
 
   const materias = [
     { nome: 'Linguagens', subtitulo: 'Português & Interpretação', cor: 'from-amber-500 to-orange-800' },
@@ -65,10 +68,7 @@ export default function PortalAluno() {
     if (!simuladoEmAndamento || tempoRestante <= 0) return;
     const timer = setInterval(() => {
       setTempoRestante((prev) => {
-        if (prev <= 1) {
-          finalizarSimulado();
-          return 0;
-        }
+        if (prev <= 1) { finalizarSimulado(); return 0; }
         return prev - 1;
       });
     }, 1000);
@@ -76,18 +76,20 @@ export default function PortalAluno() {
   }, [simuladoEmAndamento, tempoRestante]);
 
   const carregarDados = async (user: any) => {
-    const [ativs, sims, tema, reds, libs] = await Promise.all([
+    const [ativs, sims, tema, reds, libs, rank] = await Promise.all([
       supabase.from('atividades').select('*').eq('serie', user.serie),
       supabase.from('simulados').select('*').eq('serie_alvo', user.serie).eq('ativo', true),
       supabase.from('temas_redacao').select('*').eq('ativo', true).single(),
       supabase.from('redacoes_enviadas').select('*').eq('aluno_email', user.email).order('enviado_em', { ascending: false }),
-      supabase.from('biblioteca').select('*')
+      supabase.from('biblioteca').select('*'),
+      supabase.from('usuarios_autorizados').select('nome, serie, xp').eq('perfil', 'aluno').order('xp', { ascending: false }).limit(10)
     ]);
     if (ativs.data) setAtividades(ativs.data);
     if (sims.data) setSimulados(sims.data);
     if (tema.data) setTemaAtivo(tema.data);
     if (reds.data) setMinhasRedacoes(reds.data);
     if (libs.data) setLivros(libs.data.filter(l => l.serie === '6º ao 9º Ano' || l.serie === user.serie));
+    if (rank.data) setRankingAlunos(rank.data);
   };
 
   const responderQuestao = async (questao: any, letra: string) => {
@@ -104,14 +106,33 @@ export default function PortalAluno() {
     }
   };
 
-  // Alternar seleção para PDF
-  const toggleSelecaoPdf = (id: string) => {
-    setSelecionadasPdf(prev =>
-      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
-    );
+  const pedirAjudaTutorIA = async (questao: any) => {
+    setCarregandoTutor(questao.id);
+    try {
+      const res = await fetch('/api/tutor-ia', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          serie: usuario.serie,
+          disciplina: questao.disciplina,
+          enunciado: questao.enunciado,
+          alternativaEscolhida: respostasAluno[questao.id],
+          alternativaCorreta: questao.correta
+        })
+      });
+      const data = await res.json();
+      setExplicacoesTutor(prev => ({ ...prev, [questao.id]: data.explicacao || 'Revise o enunciado com atenção.' }));
+    } catch {
+      setExplicacoesTutor(prev => ({ ...prev, [questao.id]: 'Não foi possível conectar ao Tutor IA agora.' }));
+    } finally {
+      setCarregandoTutor(null);
+    }
   };
 
-  // Gerar Apostila Personalizada em PDF (Impressão Limpa)
+  const toggleSelecaoPdf = (id: string) => {
+    setSelecionadasPdf(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  };
+
   const gerarApostilaPDF = () => {
     const questoesEscolhidas = atividades.filter(a => selecionadasPdf.includes(a.id));
     if (questoesEscolhidas.length === 0) return;
@@ -147,7 +168,6 @@ export default function PortalAluno() {
             <strong>Série:</strong> ${usuario.serie} • <strong>Data:</strong> ${new Date().toLocaleDateString('pt-BR')}
           </div>
         </div>
-
         ${questoesEscolhidas.map((q, i) => `
           <div class="questao">
             <div class="q-titulo">Questão 0${i + 1} • ${q.disciplina} (${q.titulo})</div>
@@ -158,7 +178,6 @@ export default function PortalAluno() {
             <div class="alternativa">( D ) ${q.alternativa_d}</div>
           </div>
         `).join('')}
-
         <div class="gabarito-box">
           <h2>Gabarito Oficial & Resolução Comentada</h2>
           ${questoesEscolhidas.map((q, i) => `
@@ -168,14 +187,10 @@ export default function PortalAluno() {
             </div>
           `).join('')}
         </div>
-
-        <script>
-          window.onload = function() { window.print(); };
-        </script>
+        <script>window.onload = function() { window.print(); };</script>
       </body>
       </html>
     `;
-
     janela.document.write(html);
     janela.document.close();
   };
@@ -191,31 +206,72 @@ export default function PortalAluno() {
     const questoesSim = atividades.filter(a => a.simulado_id === simuladoEmAndamento?.id);
     const listaFinal = questoesSim.length > 0 ? questoesSim : atividades;
     let acertos = 0;
-    listaFinal.forEach(q => {
-      if (respostasSimulado[q.id] === q.correta) acertos++;
-    });
+    listaFinal.forEach(q => { if (respostasSimulado[q.id] === q.correta) acertos++; });
     setResultadoSimulado({ acertos, total: listaFinal.length });
     setSimuladoEmAndamento(null);
   };
 
   const formatarLinkEmbed = (url: string) => {
-    if (url.includes('drive.google.com') && url.includes('/view')) {
-      return url.replace('/view', '/preview');
-    }
+    if (url.includes('drive.google.com') && url.includes('/view')) return url.replace('/view', '/preview');
     return url;
   };
 
-  const enviarRedacao = async () => {
+  const enviarRedacaoComIA = async (usarIA: boolean) => {
     if (!textoRedacao.trim() || !usuario) return;
+    setEnviandoRedacao(true);
+    setAvaliacaoIaInstantanea(null);
+
+    let notaFinal = null;
+    let comentarioFinal = null;
+    let jaCorrigida = false;
+
+    if (usarIA) {
+      try {
+        const res = await fetch('/api/corrigir-redacao', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tema: temaAtivo?.titulo || 'Tema Semanal EPP Nexo',
+            texto: textoRedacao,
+            serie: usuario.serie
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.avaliacao) {
+          const av = data.avaliacao;
+          setAvaliacaoIaInstantanea(av);
+          notaFinal = av.nota_total;
+          jaCorrigida = true;
+          comentarioFinal = `[Correção IA EPP] C1: ${av.c1} | C2: ${av.c2} | C3: ${av.c3} | C4: ${av.c4} | C5: ${av.c5}\n\n✅ Pontos Fortes: ${av.pontos_fortes}\n\n🎯 Melhorias: ${av.pontos_melhoria}\n\n💬 Parecer: ${av.comentario_geral}`;
+
+          // Ganha +50 XP por concluir redação corrigida
+          const novoXp = (usuario.xp || 0) + 50;
+          const atualizado = { ...usuario, xp: novoXp };
+          setUsuario(atualizado);
+          localStorage.setItem('epp_usuario', JSON.stringify(atualizado));
+          await supabase.from('usuarios_autorizados').update({ xp: novoXp }).eq('email', usuario.email);
+        }
+      } catch {
+        // Fallback para envio manual ao professor
+      }
+    }
+
     await supabase.from('redacoes_enviadas').insert([{
       aluno_email: usuario.email,
       aluno_nome: usuario.nome,
       serie: usuario.serie,
       tema_id: temaAtivo?.id || null,
-      texto_redacao: textoRedacao
+      texto_redacao: textoRedacao,
+      nota: notaFinal,
+      comentario_professor: comentarioFinal,
+      corrigida: jaCorrigida
     }]);
-    setRedacaoEnviada(true);
-    setTextoRedacao('');
+
+    setEnviandoRedacao(false);
+    if (!usarIA) {
+      setEscrevendoRedacao(false);
+      setTextoRedacao('');
+    }
     carregarDados(usuario);
   };
 
@@ -227,6 +283,7 @@ export default function PortalAluno() {
   if (!usuario) return null;
 
   const questoesDaMateria = atividades.filter(a => a.disciplina === materiaSelecionada && !a.simulado_id);
+  const patente = (usuario.xp || 0) >= 500 ? 'Lenda EPP' : (usuario.xp || 0) >= 200 ? 'Mestre Nexo' : (usuario.xp || 0) >= 60 ? 'Explorador' : 'Iniciante';
 
   return (
     <div className="min-h-screen bg-[#F4F5F7] text-slate-900 flex flex-col">
@@ -246,22 +303,17 @@ export default function PortalAluno() {
         </div>
       )}
 
-      {/* BARRA FLUTUANTE PARA GERAR PDF PERSONALIZADO */}
+      {/* BARRA FLUTUANTE PDF */}
       {selecionadasPdf.length > 0 && (
         <div className="fixed bottom-6 right-6 z-40 bg-slate-950 text-white px-5 py-3.5 rounded-2xl border-2 border-amber-400 shadow-[6px_6px_0px_#F59E0B] flex items-center gap-4 animate-pop-in">
           <div>
             <p className="text-xs font-black text-amber-400">{selecionadasPdf.length} questão(ões) marcada(s)</p>
             <p className="text-[11px] text-slate-300">Prontas para montar sua apostila</p>
           </div>
-          <button
-            onClick={gerarApostilaPDF}
-            className="bg-lime-400 hover:bg-lime-300 text-slate-950 font-black text-xs px-4 py-2.5 rounded-xl flex items-center gap-1.5 cursor-pointer"
-          >
+          <button onClick={gerarApostilaPDF} className="bg-lime-400 hover:bg-lime-300 text-slate-950 font-black text-xs px-4 py-2.5 rounded-xl flex items-center gap-1.5 cursor-pointer">
             <Printer className="w-4 h-4" /> Baixar PDF
           </button>
-          <button onClick={() => setSelecionadasPdf([])} className="text-slate-400 hover:text-white text-xs cursor-pointer">
-            Limpar
-          </button>
+          <button onClick={() => setSelecionadasPdf([])} className="text-slate-400 hover:text-white text-xs cursor-pointer">Limpar</button>
         </div>
       )}
 
@@ -278,8 +330,11 @@ export default function PortalAluno() {
           </Link>
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="bg-cyan-100 text-cyan-950 font-black text-xs px-3.5 py-1.5 rounded-full border-2 border-slate-900">
+        <div className="flex items-center gap-2.5">
+          <span className="hidden sm:inline-block bg-slate-900 text-amber-400 font-black text-[11px] px-3 py-1 rounded-full">
+            {patente}
+          </span>
+          <span className="bg-cyan-100 text-cyan-950 font-black text-xs px-3 py-1.5 rounded-full border-2 border-slate-900">
             {usuario.serie}
           </span>
           <div className="flex items-center gap-1.5 bg-amber-400 text-slate-950 border-2 border-slate-900 px-3.5 py-1.5 rounded-full text-xs font-black shadow-[2px_2px_0px_#0f172a]">
@@ -297,7 +352,6 @@ export default function PortalAluno() {
       </header>
 
       <div className="flex flex-1 max-w-[1440px] w-full mx-auto">
-        {/* SIDEBAR */}
         <aside className={`${menuMobileAberto ? 'fixed inset-y-0 left-0 z-40 block pt-16' : 'hidden'} lg:block w-64 bg-white border-r-2 border-slate-200 shrink-0`}>
           <div className="p-4 space-y-1.5">
             <p className="px-3 text-[10px] font-black tracking-widest text-slate-400 uppercase mb-2">Trilha de Estudos</p>
@@ -326,12 +380,17 @@ export default function PortalAluno() {
               <Clock className="w-4 h-4" /> Simulados
             </button>
 
-            <button onClick={() => { setSecaoAtiva('redacao'); setEscrevendoRedacao(false); setMenuMobileAberto(false); }} className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-black cursor-pointer ${secaoAtiva === 'redacao' ? 'bg-amber-400 text-slate-950 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]' : 'text-slate-600 hover:bg-slate-100'}`}>
-              <PenTool className="w-4 h-4" /> Redação
+            <button onClick={() => { setSecaoAtiva('redacao'); setEscrevendoRedacao(false); setAvaliacaoIaInstantanea(null); setMenuMobileAberto(false); }} className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-sm font-black cursor-pointer ${secaoAtiva === 'redacao' ? 'bg-amber-400 text-slate-950 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]' : 'text-slate-600 hover:bg-slate-100'}`}>
+              <span className="flex items-center gap-3"><PenTool className="w-4 h-4" /> Redação + IA</span>
+              <span className="text-[9px] bg-lime-400 text-slate-950 font-black px-1.5 py-0.5 rounded-full">NOVO</span>
             </button>
 
             <button onClick={() => { setSecaoAtiva('biblioteca'); setMenuMobileAberto(false); }} className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-black cursor-pointer ${secaoAtiva === 'biblioteca' ? 'bg-amber-400 text-slate-950 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]' : 'text-slate-600 hover:bg-slate-100'}`}>
               <BookOpen className="w-4 h-4" /> Biblioteca PDF
+            </button>
+
+            <button onClick={() => { setSecaoAtiva('ranking'); carregarDados(usuario); setMenuMobileAberto(false); }} className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-black cursor-pointer ${secaoAtiva === 'ranking' ? 'bg-amber-400 text-slate-950 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]' : 'text-slate-600 hover:bg-slate-100'}`}>
+              <Trophy className="w-4 h-4" /> Ranking EPP
             </button>
 
             <button onClick={() => { setSecaoAtiva('desempenho'); setMenuMobileAberto(false); }} className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-black cursor-pointer ${secaoAtiva === 'desempenho' ? 'bg-amber-400 text-slate-950 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]' : 'text-slate-600 hover:bg-slate-100'}`}>
@@ -340,22 +399,26 @@ export default function PortalAluno() {
           </div>
         </aside>
 
-        {/* CONTEÚDO PRINCIPAL */}
         <main className="flex-1 p-6 lg:p-10">
           {secaoAtiva === 'inicio' && (
             <div className="space-y-8 max-w-5xl animate-fade-up">
               <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950 rounded-3xl p-8 text-white border-2 border-slate-900 shadow-[6px_6px_0px_#F59E0B] flex flex-col md:flex-row items-center justify-between gap-6">
-                <div className="space-y-3 max-w-lg">
+                <div className="space-y-3 max-w-xl">
                   <span className="inline-flex items-center gap-1.5 bg-lime-400 text-slate-950 text-[10px] font-black tracking-widest uppercase px-3 py-1 rounded-full">
                     <Sparkles className="w-3 h-3" /> PLATAFORMA DE REFORÇO EPP NEXO
                   </span>
                   <h1 className="text-2xl sm:text-4xl font-black">Bons estudos, {usuario.nome}!</h1>
                   <p className="text-sm text-slate-300">
-                    Pratique questões interativas para ganhar XP ou selecione seus exercícios favoritos para gerar sua própria apostila em PDF.
+                    Resolva questões com ajuda do Tutor IA, envie sua redação para correção instantânea com notas por competência ou monte sua apostila em PDF.
                   </p>
-                  <button onClick={() => setSecaoAtiva('conteudo')} className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm px-6 py-3 rounded-2xl border-2 border-slate-950 shadow-[3px_3px_0px_#ffffff] cursor-pointer">
-                    Começar Lista de Exercícios <ArrowRight className="w-4 h-4" />
-                  </button>
+                  <div className="flex flex-wrap gap-3 pt-1">
+                    <button onClick={() => setSecaoAtiva('conteudo')} className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm px-6 py-3 rounded-2xl border-2 border-slate-950 shadow-[3px_3px_0px_#ffffff] cursor-pointer">
+                      Resolver Exercícios <ArrowRight className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => setSecaoAtiva('redacao')} className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-black text-sm px-5 py-3 rounded-2xl border border-white/30 cursor-pointer">
+                      <Bot className="w-4 h-4 text-lime-400" /> Redação com IA
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -370,13 +433,13 @@ export default function PortalAluno() {
             </div>
           )}
 
-          {/* QUESTÕES INTERATIVAS + SELEÇÃO PARA APOSTILA PDF */}
+          {/* QUESTÕES + TUTOR IA + PDF */}
           {secaoAtiva === 'conteudo' && (
             <div className="space-y-6 max-w-4xl animate-fade-up">
               <div className="flex flex-wrap justify-between items-center gap-3 bg-white p-5 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a]">
                 <div>
                   <h1 className="text-2xl font-black">{materiaSelecionada} • {usuario.serie}</h1>
-                  <p className="text-xs text-slate-500">Responda na tela para ganhar XP ou marque para baixar em PDF</p>
+                  <p className="text-xs text-slate-500">Ganhe +20 XP por acerto, peça dicas ao Tutor IA ou baixe sua lista em PDF</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {questoesDaMateria.length > 0 && (
@@ -459,9 +522,29 @@ export default function PortalAluno() {
                       </div>
 
                       {escolhida && (
-                        <div className="bg-slate-50 p-4 rounded-2xl border-2 border-slate-200 text-xs space-y-1 animate-fade-up">
-                          <p className="font-black text-slate-900">Resolução Comentada:</p>
-                          <p className="text-slate-600">{q.resolucao_comentada}</p>
+                        <div className="bg-slate-50 p-4 rounded-2xl border-2 border-slate-200 text-xs space-y-3 animate-fade-up">
+                          <div>
+                            <p className="font-black text-slate-900">Resolução Comentada:</p>
+                            <p className="text-slate-600 mt-0.5">{q.resolucao_comentada}</p>
+                          </div>
+
+                          {!acertou && !explicacoesTutor[q.id] && (
+                            <button
+                              onClick={() => pedirAjudaTutorIA(q)}
+                              disabled={carregandoTutor === q.id}
+                              className="bg-slate-900 hover:bg-slate-800 text-amber-400 font-black px-4 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <HelpCircle className="w-3.5 h-3.5" />
+                              {carregandoTutor === q.id ? 'Tutor IA analisando seu erro...' : 'Ainda com dúvida? Pedir explicação ao Tutor IA'}
+                            </button>
+                          )}
+
+                          {explicacoesTutor[q.id] && (
+                            <div className="bg-amber-50 border-2 border-amber-300 p-3.5 rounded-xl text-slate-800 whitespace-pre-wrap leading-relaxed">
+                              <p className="font-black text-amber-800 flex items-center gap-1 mb-1"><Bot className="w-4 h-4" /> Explicação do Tutor IA:</p>
+                              {explicacoesTutor[q.id]}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -545,57 +628,144 @@ export default function PortalAluno() {
             </div>
           )}
 
-          {/* REDAÇÃO */}
+          {/* REDAÇÃO + CORREÇÃO INSTANTÂNEA COM IA */}
           {secaoAtiva === 'redacao' && (
             <div className="space-y-6 max-w-4xl animate-fade-up">
-              <h1 className="text-2xl font-black">Oficina de Redação EPP</h1>
+              <h1 className="text-2xl font-black">Oficina de Redação EPP • Correção com IA</h1>
               {!escrevendoRedacao ? (
                 <>
                   <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#0f172a] space-y-3">
                     <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-3 py-1 rounded-full border border-slate-900">TEMA DA SEMANA</span>
-                    <h2 className="text-xl font-black">{temaAtivo ? temaAtivo.titulo : 'Aguardando publicação do tema semanal'}</h2>
+                    <h2 className="text-xl font-black">{temaAtivo ? temaAtivo.titulo : 'Tema Livre / Prática de Redação'}</h2>
                     {temaAtivo?.textos_apoio && <p className="text-sm text-slate-600 whitespace-pre-wrap">{temaAtivo.textos_apoio}</p>}
-                    {temaAtivo && (
-                      <button onClick={() => { setEscrevendoRedacao(true); setRedacaoEnviada(false); }} className="bg-amber-500 text-slate-950 font-black text-sm px-6 py-3 rounded-2xl border-2 border-slate-900 cursor-pointer">
-                        Escrever Redação
-                      </button>
-                    )}
+                    <button onClick={() => { setEscrevendoRedacao(true); setAvaliacaoIaInstantanea(null); }} className="bg-amber-500 text-slate-950 font-black text-sm px-6 py-3 rounded-2xl border-2 border-slate-900 cursor-pointer">
+                      Escrever Redação Agora
+                    </button>
                   </div>
 
                   <div className="space-y-3">
-                    <h3 className="font-black text-base">Minhas Redações Enviadas ({minhasRedacoes.length})</h3>
+                    <h3 className="font-black text-base">Minhas Redações Corrigidas ({minhasRedacoes.length})</h3>
                     {minhasRedacoes.map((r) => (
                       <div key={r.id} className="bg-white p-5 rounded-2xl border-2 border-slate-200 space-y-2">
                         <div className="flex justify-between items-center">
                           <span className="text-xs font-bold text-slate-400">{new Date(r.enviado_em).toLocaleDateString('pt-BR')}</span>
                           {r.corrigida ? (
-                            <span className="bg-lime-400 border border-slate-900 text-slate-950 font-black text-xs px-3 py-1 rounded-full">Nota: {r.nota}</span>
+                            <span className="bg-lime-400 border border-slate-900 text-slate-950 font-black text-xs px-3 py-1 rounded-full">Nota: {r.nota} / 1000</span>
                           ) : (
-                            <span className="bg-amber-100 text-amber-800 font-bold text-xs px-3 py-1 rounded-full">Aguardando correção</span>
+                            <span className="bg-amber-100 text-amber-800 font-bold text-xs px-3 py-1 rounded-full">Aguardando professor</span>
                           )}
                         </div>
                         {r.comentario_professor && (
-                          <p className="text-xs bg-slate-50 p-3.5 rounded-xl border border-slate-200"><strong>Feedback:</strong> {r.comentario_professor}</p>
+                          <p className="text-xs bg-slate-50 p-4 rounded-xl border border-slate-200 whitespace-pre-wrap leading-relaxed">{r.comentario_professor}</p>
                         )}
                       </div>
                     ))}
                   </div>
                 </>
               ) : (
-                <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 space-y-4">
-                  {redacaoEnviada ? (
-                    <div className="bg-lime-400 p-4 rounded-2xl font-black text-slate-950">Redação enviada com sucesso!</div>
-                  ) : (
-                    <>
-                      <textarea rows={12} value={textoRedacao} onChange={(e) => setTextoRedacao(e.target.value)} placeholder="Digite sua redação aqui..." className="w-full p-4 border-2 border-slate-300 rounded-2xl text-sm" />
-                      <div className="flex justify-between">
-                        <button onClick={() => setEscrevendoRedacao(false)} className="text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-                        <button onClick={enviarRedacao} className="bg-amber-500 font-black text-sm px-6 py-3 rounded-2xl border-2 border-slate-900 cursor-pointer">Enviar para Correção</button>
+                <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#0f172a] space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h2 className="font-black text-lg">Folha de Redação Digital</h2>
+                    <span className="text-xs font-bold text-slate-500">{textoRedacao.length} caracteres</span>
+                  </div>
+
+                  <textarea
+                    rows={12}
+                    value={textoRedacao}
+                    onChange={(e) => setTextoRedacao(e.target.value)}
+                    placeholder="Escreva sua redação completa com introdução, desenvolvimento e conclusão..."
+                    className="w-full p-4 border-2 border-slate-300 focus:border-slate-900 rounded-2xl text-sm outline-none leading-relaxed"
+                  />
+
+                  {avaliacaoIaInstantanea && (
+                    <div className="bg-slate-950 text-white p-6 rounded-3xl border-2 border-lime-400 space-y-4 animate-pop-in">
+                      <div className="flex flex-wrap justify-between items-center gap-2 border-b border-slate-800 pb-4">
+                        <div>
+                          <span className="text-[10px] font-black bg-lime-400 text-slate-950 px-2.5 py-0.5 rounded-full uppercase">Boletim da Banca IA (+50 XP)</span>
+                          <h3 className="text-xl font-black mt-1">Nota Final: {avaliacaoIaInstantanea.nota_total} / 1000</h3>
+                        </div>
+                        <div className="flex gap-2 text-xs font-black">
+                          <span className="bg-white/10 px-2.5 py-1.5 rounded-lg">C1: {avaliacaoIaInstantanea.c1}</span>
+                          <span className="bg-white/10 px-2.5 py-1.5 rounded-lg">C2: {avaliacaoIaInstantanea.c2}</span>
+                          <span className="bg-white/10 px-2.5 py-1.5 rounded-lg">C3: {avaliacaoIaInstantanea.c3}</span>
+                          <span className="bg-white/10 px-2.5 py-1.5 rounded-lg">C4: {avaliacaoIaInstantanea.c4}</span>
+                          <span className="bg-white/10 px-2.5 py-1.5 rounded-lg">C5: {avaliacaoIaInstantanea.c5}</span>
+                        </div>
                       </div>
-                    </>
+                      <div className="grid sm:grid-cols-2 gap-4 text-xs">
+                        <div className="bg-lime-950/50 border border-lime-500/40 p-4 rounded-2xl">
+                          <p className="font-black text-lime-400 mb-1">✅ Pontos Fortes</p>
+                          <p className="text-slate-200 leading-relaxed">{avaliacaoIaInstantanea.pontos_fortes}</p>
+                        </div>
+                        <div className="bg-amber-950/50 border border-amber-500/40 p-4 rounded-2xl">
+                          <p className="font-black text-amber-400 mb-1">🎯 O que melhorar</p>
+                          <p className="text-slate-200 leading-relaxed">{avaliacaoIaInstantanea.pontos_melhoria}</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-300 bg-white/5 p-4 rounded-2xl leading-relaxed">
+                        <strong className="text-white">Parecer Geral:</strong> {avaliacaoIaInstantanea.comentario_geral}
+                      </p>
+                    </div>
                   )}
+
+                  <div className="flex flex-wrap justify-between items-center gap-3 pt-2">
+                    <button onClick={() => setEscrevendoRedacao(false)} className="text-xs font-bold text-slate-500 hover:text-slate-900 cursor-pointer">
+                      Voltar
+                    </button>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        onClick={() => enviarRedacaoComIA(false)}
+                        disabled={enviandoRedacao}
+                        className="bg-slate-200 hover:bg-slate-300 text-slate-900 font-black text-xs px-5 py-3 rounded-xl cursor-pointer"
+                      >
+                        Enviar só para Professor
+                      </button>
+                      <button
+                        onClick={() => enviarRedacaoComIA(true)}
+                        disabled={enviandoRedacao}
+                        className="bg-lime-400 hover:bg-lime-300 text-slate-950 font-black text-xs px-6 py-3 rounded-xl border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex items-center gap-2 cursor-pointer"
+                      >
+                        <Bot className="w-4 h-4" />
+                        {enviandoRedacao ? 'Banca IA corrigindo texto...' : 'Corrigir Agora com IA (+50 XP)'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* RANKING EPP */}
+          {secaoAtiva === 'ranking' && (
+            <div className="space-y-6 max-w-3xl animate-fade-up">
+              <div className="bg-slate-950 text-white p-6 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#F59E0B] flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-black text-amber-400 flex items-center gap-2"><Trophy className="w-6 h-6" /> Ranking Geral EPP Nexo</h1>
+                  <p className="text-xs text-slate-300 mt-1">Os estudantes que mais acumulam XP resolvendo questões e redações.</p>
+                </div>
+                <span className="bg-amber-500 text-slate-950 font-black text-xs px-3.5 py-1.5 rounded-full">TOP 10</span>
+              </div>
+
+              <div className="space-y-3">
+                {rankingAlunos.map((al, idx) => (
+                  <div key={idx} className={`p-4 rounded-2xl border-2 flex justify-between items-center ${idx === 0 ? 'bg-amber-50 border-amber-500 shadow-[4px_4px_0px_#F59E0B]' : 'bg-white border-slate-200'}`}>
+                    <div className="flex items-center gap-4">
+                      <span className={`w-9 h-9 rounded-full font-black text-sm flex items-center justify-center border-2 border-slate-900 ${
+                        idx === 0 ? 'bg-amber-400 text-slate-950' : idx === 1 ? 'bg-slate-300 text-slate-950' : idx === 2 ? 'bg-orange-300 text-slate-950' : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        {idx + 1}º
+                      </span>
+                      <div>
+                        <p className="font-black text-sm">{al.nome}</p>
+                        <p className="text-xs text-slate-500">{al.serie}</p>
+                      </div>
+                    </div>
+                    <span className="font-black text-sm bg-slate-900 text-amber-400 px-3.5 py-1.5 rounded-full">
+                      {al.xp || 0} XP
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -630,6 +800,7 @@ export default function PortalAluno() {
                 <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#F59E0B]">
                   <p className="text-xs text-slate-500 font-black uppercase">Total de XP Acumulado</p>
                   <p className="text-3xl font-black text-amber-500 mt-2">{usuario.xp || 0} XP</p>
+                  <p className="text-xs font-bold text-slate-400 mt-1">Patente: {patente}</p>
                 </div>
                 <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#84cc16]">
                   <p className="text-xs text-slate-500 font-black uppercase">Acertos nesta Sessão</p>
