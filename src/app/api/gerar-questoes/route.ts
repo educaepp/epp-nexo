@@ -2,38 +2,38 @@
 
 export async function POST(req: Request) {
   try {
-    const { serie, disciplina, tema, quantidade, nivel } = await req.json();
+    const { serie, disciplina, assunto, nivel, quantidade, pais, banca } = await req.json();
     const apiKey = process.env.OPENROUTER_API_KEY;
 
     if (!apiKey) {
-      return NextResponse.json(
-        { error: 'Chave OPENROUTER_API_KEY não configurada nas Environment Variables da Vercel.' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'OPENROUTER_API_KEY não configurada na Vercel.' }, { status: 500 });
     }
 
-    const prompt = `Você é um professor especialista da plataforma educacional brasileira EPP Nexo (6º ao 9º ano do Ensino Fundamental).
-Crie exatamente ${quantidade} questões inéditas de múltipla escolha para o ${serie}, disciplina de ${disciplina}, sobre o assunto "${tema}".
-Nível de dificuldade exigido: ${nivel}.
+    const qtd = Math.min(Number(quantidade) || 3, 10);
+    const paisAlvo = pais || 'Brasil';
+    const bancaAlvo = banca || 'ENEM / OBMEP';
 
-Diretrizes pedagógicas por nível:
-- Fácil (Fixação): Direta ao ponto, avalia reconhecimento de conceitos básicos e regras fundamentais.
-- Médio (Contextualizado): Enunciado com situação-problema cotidiana ou pequeno texto-base interpretativo (estilo SAEB/ENEM júnior).
-- Profundo (Desafio & Raciocínio): Exige análise crítica, conexão entre conceitos, resolução em múltiplas etapas ou interpretação complexa.
+    const prompt = `Você é um elaborador especialista em exames nacionais e internacionais adaptados para estudantes do ${serie} do Ensino Fundamental no Brasil.
+Crie ${qtd} questões de múltipla escolha em PORTUGUÊS inspiradas no estilo, contextualização e rigor do exame:
+- País de origem: ${paisAlvo}
+- Exame / Banca de referência: ${bancaAlvo}
+- Disciplina: ${disciplina}
+- Assunto: ${assunto}
+- Nível de dificuldade: ${nivel || 'Médio'}
 
-Retorne APENAS um array JSON válido (sem markdown, sem crases \`\`\`, sem texto antes ou depois) exatamente nesta estrutura:
+Adapte o vocabulário e a complexidade para que um aluno do ${serie} consiga resolver usando raciocínio lógico e os conteúdos da sua série, mantendo a identidade da prova (${bancaAlvo} - ${paisAlvo}).
+
+Retorne APENAS um array JSON puro (sem markdown, sem crases) exatamente neste formato:
 [
   {
-    "serie": "${serie}",
-    "disciplina": "${disciplina}",
-    "titulo": "Subtópico específico da questão",
-    "enunciado": "Enunciado completo, claro e bem contextualizado",
-    "alternativa_a": "Texto da alternativa A",
-    "alternativa_b": "Texto da alternativa B",
-    "alternativa_c": "Texto da alternativa C",
-    "alternativa_d": "Texto da alternativa D",
+    "titulo": "${assunto} (${bancaAlvo})",
+    "enunciado": "Texto contextualizado da questão...",
+    "alternativa_a": "Texto A",
+    "alternativa_b": "Texto B",
+    "alternativa_c": "Texto C",
+    "alternativa_d": "Texto D",
     "correta": "A",
-    "resolucao_comentada": "Explicação pedagógica detalhada passo a passo do porquê a alternativa correta é a certa e o erro das demais."
+    "resolucao_comentada": "Explicação passo a passo clara da resolução."
   }
 ]`;
 
@@ -43,39 +43,29 @@ Retorne APENAS um array JSON válido (sem markdown, sem crases \`\`\`, sem texto
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://epp-nexo.vercel.app',
-        'X-Title': 'EPP Nexo'
+        'X-Title': 'EPP Nexo Banco Internacional'
       },
       body: JSON.stringify({
         model: 'openrouter/free',
         messages: [
-          {
-            role: 'system',
-            content: 'Você responde exclusivamente em JSON puro, sem blocos de código markdown e sem texto explicativo fora do array.'
-          },
+          { role: 'system', content: 'Responda exclusivamente com um array JSON válido, sem markdown.' },
           { role: 'user', content: prompt }
         ],
-        temperature: 0.7
+        temperature: 0.6
       })
     });
 
     const data = await response.json();
-
     if (!response.ok) {
-      return NextResponse.json(
-        { error: data.error?.message || 'Erro ao comunicar com o OpenRouter.' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: data.error?.message || 'Erro na IA.' }, { status: 500 });
     }
 
-    let textoResposta = data.choices?.[0]?.message?.content || '[]';
-    textoResposta = textoResposta.replace(/```json/gi, '').replace(/```/g, '').trim();
+    let raw = data.choices?.[0]?.message?.content || '[]';
+    raw = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const questoes = JSON.parse(raw);
 
-    const questoes = JSON.parse(textoResposta);
     return NextResponse.json({ questoes });
   } catch (err: any) {
-    return NextResponse.json(
-      { error: err.message || 'Erro interno ao processar a resposta da IA.' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: err.message || 'Falha ao gerar questões.' }, { status: 500 });
   }
 }

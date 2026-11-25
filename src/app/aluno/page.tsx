@@ -4,21 +4,20 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { 
-  Home, Layers, PenTool, BarChart2, BookOpen, Clock, 
-  ChevronDown, ChevronRight, Flame, CheckCircle2, 
-  XCircle, FileText, ArrowRight, LogOut, Menu, X,
-  Printer, CheckSquare, Square, Sparkles, Trophy, Bot, 
-  HelpCircle, Calendar, Target, RotateCcw, Play, Pause, 
-  Bell, MessageSquare, Camera, Volume2, Upload, Send, Zap
+  Home, Layers, BookOpen, Clock, Flame, LogOut, Menu, X,
+  Printer, CheckSquare, Square, Sparkles, Trophy, 
+  HelpCircle, Calendar, RotateCcw, Play, Pause, 
+  Bell, MessageSquare, Camera, Volume2, Upload, Send, Zap,
+  Globe, Award, FileCheck2, ArrowRight, BarChart2
 } from 'lucide-react';
 
 export default function PortalAluno() {
   const router = useRouter();
   const [usuario, setUsuario] = useState<any>(null);
   const [secaoAtiva, setSecaoAtiva] = useState<'inicio' | 'plano' | 'conteudo' | 'erros' | 'duvidas' | 'redacao' | 'simulados' | 'biblioteca' | 'ranking' | 'desempenho'>('inicio');
-  const [materiaSelecionada, setMateriaSelecionada] = useState<string>('Matemática');
+  const [materiaSelecionada, setMateriaSelecionada] = useState<string>('Todas');
   const [filtroNivel, setFiltroNivel] = useState<string>('Todos');
-  const [menuConteudosAberto, setMenuConteudosAberto] = useState(true);
+  const [filtroPais, setFiltroPais] = useState<string>('Todos');
   const [menuMobileAberto, setMenuMobileAberto] = useState(false);
 
   const [atividades, setAtividades] = useState<any[]>([]);
@@ -51,13 +50,15 @@ export default function PortalAluno() {
   const [horasEstudo, setHorasEstudo] = useState('1 hora');
   const [gerandoPlano, setGerandoPlano] = useState(false);
   const [planoAtivo, setPlanoAtivo] = useState<any>(null);
-  const [diasConcluidos, setDiasConcluidos] = useState<number[]>([]);
 
-  // Questões & XP
+  // Questões, XP & Caderno PDF Personalizado
   const [respostasAluno, setRespostasAluno] = useState<Record<string, string>>({});
   const [explicacoesTutor, setExplicacoesTutor] = useState<Record<string, string>>({});
   const [carregandoTutor, setCarregandoTutor] = useState<string | null>(null);
   const [selecionadasPdf, setSelecionadasPdf] = useState<string[]>([]);
+  const [tituloCadernoPdf, setTituloCadernoPdf] = useState('Caderno de Exercícios Personalizado');
+  const [incluirGabaritoPdf, setIncluirGabaritoPdf] = useState(true);
+  const [modalPreviewPdfAberto, setModalPreviewPdfAberto] = useState(false);
 
   // Simulado
   const [simuladoEmAndamento, setSimuladoEmAndamento] = useState<any>(null);
@@ -68,7 +69,7 @@ export default function PortalAluno() {
   // Biblioteca
   const [pdfAberto, setPdfAberto] = useState<any>(null);
 
-  // Redação por Foto + Correção Humana (3 dias, Áudio + Marcação Colorida) ou IA Rápida
+  // Redação por Foto
   const [enviandoNovaRedacao, setEnviandoNovaRedacao] = useState(false);
   const [fotoRedacaoFile, setFotoRedacaoFile] = useState<File | null>(null);
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
@@ -211,6 +212,284 @@ export default function PortalAluno() {
     carregarDados(usuario);
   };
 
+  const toggleSelecaoPdf = (id: string) => {
+    setSelecionadasPdf(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  };
+
+  const gerarPdfLindoCaderno = () => {
+    const lista = atividades.filter(a => selecionadasPdf.includes(a.id));
+    if (lista.length === 0) return;
+
+    const janela = window.open('', '_blank', 'width=900,height=1000');
+    if (!janela) {
+      alert('Permita pop-ups no seu navegador para gerar e salvar o PDF.');
+      return;
+    }
+
+    const dataHoje = new Date().toLocaleDateString('pt-BR');
+    const htmlQuestoes = lista.map((q, idx) => `
+      <div class="questao-card">
+        <div class="questao-header">
+          <span class="q-num">QUESTÃO ${String(idx + 1).padStart(2, '0')}</span>
+          <span class="q-meta">${q.disciplina} • ${q.pais || 'Brasil'} (${q.banca || 'EPP Nexo'}) • Nível ${q.nivel || 'Médio'}</span>
+        </div>
+        <div class="q-titulo">${q.titulo}</div>
+        <div class="q-enunciado">${q.enunciado}</div>
+        <div class="alternativas">
+          <div class="alt"><span class="bolinha">A</span> <span>${q.alternativa_a}</span></div>
+          <div class="alt"><span class="bolinha">B</span> <span>${q.alternativa_b}</span></div>
+          <div class="alt"><span class="bolinha">C</span> <span>${q.alternativa_c}</span></div>
+          <div class="alt"><span class="bolinha">D</span> <span>${q.alternativa_d}</span></div>
+        </div>
+        <div class="rascunho">Espaço para cálculos / anotações:</div>
+      </div>
+    `).join('');
+
+    const htmlGabarito = incluirGabaritoPdf ? `
+      <div class="page-break"></div>
+      <div class="gabarito-box">
+        <h2>GABARITO COMENTADO & RESOLUÇÕES OFICIAIS</h2>
+        <p class="sub-gab">Confira suas respostas e estude o passo a passo de cada questão selecionada.</p>
+        <div class="grade-respostas">
+          ${lista.map((q, idx) => `
+            <div class="item-grade">
+              <strong>Q${String(idx + 1).padStart(2, '0')}:</strong> <span class="letra-certa">${q.correta}</span>
+            </div>
+          `).join('')}
+        </div>
+        <div class="lista-resolucoes">
+          ${lista.map((q, idx) => `
+            <div class="res-item">
+              <strong>Questão ${String(idx + 1).padStart(2, '0')} (${q.titulo}) — Gabarito: ${q.correta}</strong>
+              <p>${q.resolucao_comentada || 'Resolução comentada disponível no portal EPP Nexo.'}</p>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : '';
+
+    janela.document.write(`
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <title>${tituloCadernoPdf} - EPP Nexo</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+          * { box-sizing: border-box; }
+          body {
+            font-family: 'Plus Jakarta Sans', Arial, sans-serif;
+            color: #0f172a;
+            margin: 0;
+            padding: 28px;
+            background: #ffffff;
+            line-height: 1.5;
+          }
+          .capa-header {
+            border: 2.5px solid #0f172a;
+            border-radius: 18px;
+            padding: 22px 26px;
+            background: linear-gradient(135deg, #fffbeb 0%, #ffffff 65%, #f8fafc 100%);
+            box-shadow: 5px 5px 0px #0f172a;
+            margin-bottom: 24px;
+          }
+          .topo-marca {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1.5px solid #e2e8f0;
+            padding-bottom: 12px;
+            margin-bottom: 14px;
+          }
+          .logo-badge {
+            background: #f59e0b;
+            color: #0f172a;
+            font-weight: 800;
+            padding: 6px 14px;
+            border-radius: 10px;
+            border: 2px solid #0f172a;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+          }
+          .tag-serie {
+            background: #0f172a;
+            color: #fbbf24;
+            font-weight: 800;
+            font-size: 11px;
+            padding: 5px 12px;
+            border-radius: 99px;
+            text-transform: uppercase;
+          }
+          h1 {
+            margin: 0 0 10px 0;
+            font-size: 22px;
+            font-weight: 800;
+            color: #0f172a;
+          }
+          .dados-aluno {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr;
+            gap: 12px;
+            font-size: 12px;
+            background: #f8fafc;
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1px solid #cbd5e1;
+          }
+          .questao-card {
+            border: 1.5px solid #cbd5e1;
+            border-radius: 16px;
+            padding: 18px 20px;
+            margin-bottom: 18px;
+            page-break-inside: avoid;
+          }
+          .questao-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+            gap: 6px;
+          }
+          .q-num {
+            background: #0f172a;
+            color: #ffffff;
+            font-weight: 800;
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 8px;
+          }
+          .q-meta {
+            font-size: 11px;
+            font-weight: 700;
+            color: #b45309;
+            background: #fef3c7;
+            padding: 3px 10px;
+            border-radius: 99px;
+          }
+          .q-titulo {
+            font-size: 13px;
+            font-weight: 800;
+            color: #334155;
+            margin-bottom: 6px;
+          }
+          .q-enunciado {
+            font-size: 13.5px;
+            color: #0f172a;
+            margin-bottom: 12px;
+            white-space: pre-wrap;
+          }
+          .alternativas {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+          }
+          .alt {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 13px;
+            padding: 6px 10px;
+            border-radius: 10px;
+            background: #f8fafc;
+          }
+          .bolinha {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            border: 1.5px solid #0f172a;
+            font-weight: 800;
+            font-size: 11px;
+            flex-shrink: 0;
+            background: #ffffff;
+          }
+          .rascunho {
+            margin-top: 12px;
+            border-top: 1px dashed #cbd5e1;
+            padding-top: 6px;
+            height: 44px;
+            font-size: 10px;
+            color: #94a3b8;
+          }
+          .page-break { page-break-before: always; }
+          .gabarito-box {
+            border: 2px solid #0f172a;
+            border-radius: 18px;
+            padding: 22px;
+            background: #f8fafc;
+          }
+          .gabarito-box h2 { margin: 0 0 4px 0; font-size: 18px; }
+          .sub-gab { font-size: 12px; color: #475569; margin: 0 0 16px 0; }
+          .grade-respostas {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 18px;
+          }
+          .item-grade {
+            background: #ffffff;
+            border: 1.5px solid #0f172a;
+            padding: 6px 12px;
+            border-radius: 10px;
+            font-size: 12px;
+          }
+          .letra-certa {
+            background: #a3e635;
+            padding: 1px 6px;
+            border-radius: 6px;
+            font-weight: 800;
+          }
+          .res-item {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            padding: 12px 14px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            page-break-inside: avoid;
+          }
+          .res-item p { margin: 4px 0 0 0; color: #334155; }
+          @media print {
+            body { padding: 10px; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="no-print" style="background:#0f172a;color:#fff;padding:12px 18px;border-radius:12px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:13px;font-weight:700;">Caderno pronto! Escolha <strong>"Salvar como PDF"</strong> ou imprima agora.</span>
+          <button onclick="window.print()" style="background:#f59e0b;color:#0f172a;border:none;padding:8px 16px;border-radius:8px;font-weight:800;cursor:pointer;">Salvar PDF / Imprimir</button>
+        </div>
+
+        <div class="capa-header">
+          <div class="topo-marca">
+            <span class="logo-badge">EPP NEXO • REFORÇO ESCOLAR</span>
+            <span class="tag-serie">${usuario.serie} • ${lista.length} QUESTÕES</span>
+          </div>
+          <h1>${tituloCadernoPdf}</h1>
+          <div class="dados-aluno">
+            <div><strong>Estudante:</strong> ${usuario.nome}</div>
+            <div><strong>Data:</strong> ${dataHoje}</div>
+            <div><strong>Nota / Acertos:</strong> ____ / ${lista.length}</div>
+          </div>
+        </div>
+
+        ${htmlQuestoes}
+        ${htmlGabarito}
+
+        <script>
+          window.onload = function() { setTimeout(function() { window.print(); }, 400); };
+        </script>
+      </body>
+      </html>
+    `);
+    janela.document.close();
+    setModalPreviewPdfAberto(false);
+  };
+
   const pedirAjudaTutorIA = async (questao: any) => {
     setCarregandoTutor(questao.id);
     try {
@@ -330,7 +609,6 @@ export default function PortalAluno() {
   const gerarPlanoEstudosIA = async () => {
     if (!demandaObjetivo.trim()) return;
     setGerandoPlano(true);
-    setDiasConcluidos([]);
     const fracas = estatisticasPorMateria.filter(e => e.taxa !== null && e.taxa < 70).map(e => `${e.nome} (${e.taxa}%)`).join(', ');
     const assuntosErrados = Array.from(new Set(historicoRespostas.filter(r => !r.acertou && r.assunto).map(r => r.assunto))).slice(0, 6).join(', ');
     const redacoesComNota = minhasRedacoes.filter(r => r.nota != null);
@@ -394,9 +672,13 @@ export default function PortalAluno() {
 
   if (!usuario) return null;
 
-  const questoesDaMateria = atividades
-    .filter(a => a.disciplina === materiaSelecionada && !a.simulado_id)
-    .filter(a => filtroNivel === 'Todos' || (a.nivel || 'Médio') === filtroNivel);
+  const paisesDisponiveis = ['Todos', ...Array.from(new Set(atividades.map(a => a.pais || 'Brasil')))];
+
+  const questoesFiltradas = atividades
+    .filter(a => !a.simulado_id)
+    .filter(a => materiaSelecionada === 'Todas' || a.disciplina === materiaSelecionada)
+    .filter(a => filtroNivel === 'Todos' || (a.nivel || 'Médio') === filtroNivel)
+    .filter(a => filtroPais === 'Todos' || (a.pais || 'Brasil') === filtroPais);
 
   const idsErrados = new Set(historicoRespostas.filter(r => !r.acertou).map(r => r.questao_id));
   const questoesParaRevisar = atividades.filter(a => idsErrados.has(a.id));
@@ -406,9 +688,69 @@ export default function PortalAluno() {
   const totalAcertos = historicoRespostas.filter(r => r.acertou).length;
   const taxaGeral = totalRespondidas > 0 ? Math.round((totalAcertos / totalRespondidas) * 100) : 0;
 
+  const medalhas = [
+    { titulo: 'Primeiro Passo', desc: 'Respondeu sua primeira questão', ativa: totalRespondidas >= 1 },
+    { titulo: 'Foco Pomodoro', desc: 'Concluiu ciclos de estudo cronometrado', ativa: ciclosConcluidos >= 1 || (usuario.xp || 0) >= 30 },
+    { titulo: 'Escritor EPP', desc: 'Enviou redação por foto', ativa: minhasRedacoes.length >= 1 },
+    { titulo: 'Mente Global', desc: 'Alcançou 100+ XP no portal', ativa: (usuario.xp || 0) >= 100 },
+  ];
+
   return (
     <div className="min-h-screen bg-[#F1F5F9] text-slate-900 flex flex-col">
-      {/* MODAL RELÓGIO POMODORO COMPLETO */}
+      {/* MODAL CONFIGURAR CADERNO DE QUESTÕES PDF */}
+      {modalPreviewPdfAberto && (
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 animate-pop-in">
+          <div className="bg-white w-full max-w-lg rounded-3xl border-2 border-slate-900 shadow-[8px_8px_0px_#F59E0B] p-6 space-y-5">
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-black uppercase bg-amber-400 px-3 py-1 rounded-full border border-slate-900">
+                Gerador de Caderno PDF • {selecionadasPdf.length} questões
+              </span>
+              <button onClick={() => setModalPreviewPdfAberto(false)} className="p-1.5 rounded-full hover:bg-slate-100 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-black uppercase mb-1">Título do Seu Caderno</label>
+                <input
+                  type="text"
+                  value={tituloCadernoPdf}
+                  onChange={(e) => setTituloCadernoPdf(e.target.value)}
+                  className="w-full p-3 border-2 border-slate-300 focus:border-slate-900 rounded-2xl text-xs font-bold outline-none"
+                />
+              </div>
+
+              <label className="flex items-center gap-3 p-3.5 rounded-2xl border-2 border-slate-200 bg-slate-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={incluirGabaritoPdf}
+                  onChange={(e) => setIncluirGabaritoPdf(e.target.checked)}
+                  className="w-4 h-4 accent-amber-500"
+                />
+                <div className="text-xs">
+                  <p className="font-black text-slate-900">Incluir folha final com Gabarito & Resoluções Comentadas</p>
+                  <p className="text-slate-500">Desmarque se quiser imprimir apenas as questões para simular uma prova real.</p>
+                </div>
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setModalPreviewPdfAberto(false)} className="px-4 py-2.5 text-xs font-bold text-slate-500 cursor-pointer">
+                Cancelar
+              </button>
+              <button
+                onClick={gerarPdfLindoCaderno}
+                className="bg-slate-950 hover:bg-slate-800 text-amber-400 font-black text-xs px-6 py-3.5 rounded-2xl flex items-center gap-2 cursor-pointer"
+              >
+                <Printer className="w-4 h-4" /> Gerar & Baixar PDF Lindo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RELÓGIO POMODORO */}
       {pomodoroModalAberto && (
         <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 animate-pop-in">
           <div className="bg-white w-full max-w-md rounded-3xl border-2 border-slate-900 shadow-[8px_8px_0px_#F59E0B] p-7 space-y-6 text-center">
@@ -464,7 +806,7 @@ export default function PortalAluno() {
         </div>
       )}
 
-      {/* MODAL DE INSPEÇÃO DA REDAÇÃO CORRIGIDA (FOTO COM MARCAÇÕES COLORIDAS + ÁUDIO) */}
+      {/* MODAL INSPEÇÃO REDAÇÃO CORRIGIDA */}
       {redacaoInspecionada && (
         <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-pop-in">
           <div className="bg-white w-full max-w-5xl rounded-3xl border-2 border-slate-900 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
@@ -481,7 +823,6 @@ export default function PortalAluno() {
             </div>
 
             <div className="grid lg:grid-cols-2 gap-6 p-6 overflow-y-auto">
-              {/* IMAGEM DA REDAÇÃO COM PINOS DE MARCAÇÃO COLORIDA */}
               <div className="space-y-2">
                 <p className="text-xs font-black text-slate-500 uppercase">Clique nos pontos coloridos na folha para ler as anotações:</p>
                 <div className="relative rounded-2xl border-2 border-slate-900 overflow-hidden bg-slate-100">
@@ -502,7 +843,6 @@ export default function PortalAluno() {
                 </div>
               </div>
 
-              {/* ÁUDIO DO PROFESSOR + LISTA DE MARCAÇÕES COLORIDAS */}
               <div className="space-y-4">
                 {redacaoInspecionada.audio_url && (
                   <div className="bg-amber-50 border-2 border-amber-400 p-4 rounded-2xl space-y-2">
@@ -562,7 +902,7 @@ export default function PortalAluno() {
         </div>
       )}
 
-      {/* HEADER MODERNO COM NOTIFICAÇÕES & POMODORO */}
+      {/* HEADER */}
       <header className="bg-white/95 backdrop-blur-md border-b border-slate-200 h-16 px-4 lg:px-8 flex items-center justify-between sticky top-0 z-30">
         <div className="flex items-center gap-3">
           <button onClick={() => setMenuMobileAberto(!menuMobileAberto)} className="lg:hidden p-2 rounded-xl hover:bg-slate-100">
@@ -576,7 +916,6 @@ export default function PortalAluno() {
         </div>
 
         <div className="flex items-center gap-2.5">
-          {/* BOTÃO RELÓGIO POMODORO */}
           <button
             onClick={() => setPomodoroModalAberto(true)}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full border-2 text-xs font-black cursor-pointer transition-all ${
@@ -587,7 +926,6 @@ export default function PortalAluno() {
             <span className="font-mono">{String(Math.floor(pomodoroSegundos / 60)).padStart(2, '0')}:{String(pomodoroSegundos % 60).padStart(2, '0')}</span>
           </button>
 
-          {/* SININHO DE NOTIFICAÇÕES */}
           <div className="relative">
             <button
               onClick={marcarNotificacoesLidas}
@@ -639,7 +977,6 @@ export default function PortalAluno() {
       </header>
 
       <div className="flex flex-1 max-w-[1440px] w-full mx-auto">
-        {/* MENU LATERAL */}
         <aside className={`${menuMobileAberto ? 'fixed inset-y-0 left-0 z-40 block pt-16' : 'hidden'} lg:block w-64 bg-white border-r border-slate-200 shrink-0`}>
           <div className="p-4 space-y-1">
             <p className="px-3 text-[10px] font-black tracking-widest text-slate-400 uppercase mb-2">Portal do Estudante</p>
@@ -647,7 +984,7 @@ export default function PortalAluno() {
             {[
               { id: 'inicio', label: 'Visão Geral', icon: Home },
               { id: 'plano', label: 'Plano IA Sob Demanda', icon: Calendar, badge: 'IA' },
-              { id: 'conteudo', label: 'Banco de Questões', icon: Layers },
+              { id: 'conteudo', label: 'Banco Mundial & PDF', icon: Layers, badge: 'PDF' },
               { id: 'erros', label: 'Caderno de Erros', icon: RotateCcw, badge: questoesParaRevisar.length || null },
               { id: 'redacao', label: 'Redação por Foto', icon: Camera, badge: '3 DIAS / IA' },
               { id: 'duvidas', label: 'Tirar Dúvidas', icon: MessageSquare },
@@ -676,7 +1013,6 @@ export default function PortalAluno() {
           </div>
         </aside>
 
-        {/* ÁREA PRINCIPAL */}
         <main className="flex-1 p-6 lg:p-10">
           {/* VISÃO GERAL */}
           {secaoAtiva === 'inicio' && (
@@ -688,11 +1024,11 @@ export default function PortalAluno() {
                   </span>
                   <h1 className="text-3xl sm:text-4xl font-black">Bora evoluir hoje, {usuario.nome}?</h1>
                   <p className="text-sm text-slate-300">
-                    Acerte questões para subir no ranking de XP, envie fotos das suas redações para receber áudio e marcações coloridas, ou use o Tutor IA a qualquer hora.
+                    Resolva questões de vestibulares do Brasil e do mundo para ganhar XP, monte seu próprio caderno de exercícios em PDF ou envie a foto da sua redação.
                   </p>
                   <div className="flex flex-wrap gap-3 pt-2">
                     <button onClick={() => setSecaoAtiva('conteudo')} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs px-5 py-3.5 rounded-2xl border-2 border-slate-900 flex items-center gap-2 cursor-pointer">
-                      Resolver Questões (+XP) <ArrowRight className="w-4 h-4" />
+                      Montar Caderno & Questões <ArrowRight className="w-4 h-4" />
                     </button>
                     <button onClick={() => setSecaoAtiva('redacao')} className="bg-white/10 hover:bg-white/20 text-white font-black text-xs px-5 py-3.5 rounded-2xl border border-white/30 flex items-center gap-2 cursor-pointer">
                       <Camera className="w-4 h-4 text-amber-400" /> Enviar Foto da Redação
@@ -709,6 +1045,21 @@ export default function PortalAluno() {
                     Abrir Relógio Pomodoro
                   </button>
                 </div>
+              </div>
+
+              {/* MURAL DE CONQUISTAS */}
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {medalhas.map((med, i) => (
+                  <div key={i} className={`p-4 rounded-2xl border-2 flex items-center gap-3 ${med.ativa ? 'bg-white border-slate-900 shadow-[3px_3px_0px_#84cc16]' : 'bg-slate-100 border-slate-200 opacity-60'}`}>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${med.ativa ? 'bg-lime-400 text-slate-950' : 'bg-slate-200 text-slate-400'}`}>
+                      <Award className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-black">{med.titulo}</p>
+                      <p className="text-[11px] text-slate-500">{med.desc}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
 
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -730,65 +1081,116 @@ export default function PortalAluno() {
             </div>
           )}
 
-          {/* BANCO DE QUESTÕES COM XP POR DIFICULDADE */}
+          {/* BANCO MUNDIAL DE QUESTÕES + MONTADOR DE CADERNO PDF */}
           {secaoAtiva === 'conteudo' && (
-            <div className="space-y-6 max-w-4xl animate-fade-up">
+            <div className="space-y-6 max-w-4xl animate-fade-up pb-20">
               <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] space-y-4">
                 <div className="flex flex-wrap justify-between items-center gap-3">
                   <div>
-                    <h1 className="text-2xl font-black">Banco de Questões • {materiaSelecionada}</h1>
-                    <p className="text-xs text-slate-500">Cada questão acertada soma XP direto no seu perfil (Fácil: +15 XP | Médio: +25 XP | Difícil: +40 XP)</p>
+                    <h1 className="text-2xl font-black flex items-center gap-2">
+                      <Globe className="w-6 h-6 text-amber-500" /> Banco de Questões & Caderno PDF
+                    </h1>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Responda online para ganhar XP ou marque as questões que desejar para montar um <strong>Caderno de Questões em PDF</strong>.
+                    </p>
                   </div>
+
+                  {questoesFiltradas.length > 0 && (
+                    <button
+                      onClick={() => {
+                        const todosIds = questoesFiltradas.map(q => q.id);
+                        const todosMarcados = todosIds.every(id => selecionadasPdf.includes(id));
+                        if (todosMarcados) {
+                          setSelecionadasPdf(prev => prev.filter(id => !todosIds.includes(id)));
+                        } else {
+                          setSelecionadasPdf(prev => Array.from(new Set([...prev, ...todosIds])));
+                        }
+                      }}
+                      className="text-xs font-black bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-xl border border-slate-300 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <FileCheck2 className="w-3.5 h-3.5" /> Selecionar todas da lista ({questoesFiltradas.length})
+                    </button>
+                  )}
                 </div>
 
-                {/* SELETOR DE DISCIPLINA E NÍVEL */}
-                <div className="flex flex-wrap justify-between gap-3 pt-2 border-t border-slate-100">
-                  <div className="flex flex-wrap gap-2">
-                    {materias.map(m => (
-                      <button
-                        key={m.nome}
-                        onClick={() => setMateriaSelecionada(m.nome)}
-                        className={`px-3.5 py-1.5 rounded-xl text-xs font-black cursor-pointer ${materiaSelecionada === m.nome ? 'bg-slate-900 text-amber-400' : 'bg-slate-100 text-slate-600'}`}
-                      >
-                        {m.nome}
-                      </button>
-                    ))}
+                {/* FILTROS: DISCIPLINA, PAÍS/EXAME E DIFICULDADE */}
+                <div className="grid sm:grid-cols-3 gap-3 pt-3 border-t border-slate-100">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Disciplina</label>
+                    <select
+                      value={materiaSelecionada}
+                      onChange={(e) => setMateriaSelecionada(e.target.value)}
+                      className="w-full p-2.5 border-2 border-slate-200 rounded-xl text-xs font-black bg-white"
+                    >
+                      <option value="Todas">Todas as Disciplinas</option>
+                      {materias.map(m => <option key={m.nome} value={m.nome}>{m.nome}</option>)}
+                    </select>
                   </div>
-                  <div className="flex gap-1.5">
-                    {['Todos', 'Fácil', 'Médio', 'Difícil'].map(niv => (
-                      <button
-                        key={niv}
-                        onClick={() => setFiltroNivel(niv)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${filtroNivel === niv ? 'bg-amber-400 text-slate-950 border border-slate-900' : 'bg-slate-100 text-slate-600'}`}
-                      >
-                        {niv}
-                      </button>
-                    ))}
+
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">País / Exame Internacional</label>
+                    <select
+                      value={filtroPais}
+                      onChange={(e) => setFiltroPais(e.target.value)}
+                      className="w-full p-2.5 border-2 border-slate-200 rounded-xl text-xs font-black bg-white"
+                    >
+                      {paisesDisponiveis.map(p => <option key={p} value={p}>{p === 'Todos' ? 'Todos os Países' : p}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Nível & Recompensa XP</label>
+                    <select
+                      value={filtroNivel}
+                      onChange={(e) => setFiltroNivel(e.target.value)}
+                      className="w-full p-2.5 border-2 border-slate-200 rounded-xl text-xs font-black bg-white"
+                    >
+                      <option value="Todos">Todos os Níveis</option>
+                      <option value="Fácil">Fácil (+15 XP)</option>
+                      <option value="Médio">Médio (+25 XP)</option>
+                      <option value="Difícil">Difícil (+40 XP)</option>
+                    </select>
                   </div>
                 </div>
               </div>
 
-              {questoesDaMateria.length === 0 ? (
-                <p className="text-sm text-slate-500 bg-white p-8 rounded-3xl border-2 border-slate-200">Nenhuma questão encontrada com esse filtro.</p>
+              {questoesFiltradas.length === 0 ? (
+                <p className="text-sm text-slate-500 bg-white p-8 rounded-3xl border-2 border-slate-200">Nenhuma questão encontrada com esses filtros.</p>
               ) : (
-                questoesDaMateria.map((q, index) => {
+                questoesFiltradas.map((q, index) => {
                   const escolhida = respostasAluno[q.id];
                   const acertou = escolhida === q.correta;
                   const xpQuestao = q.xp_valor || (q.nivel === 'Difícil' ? 40 : q.nivel === 'Fácil' ? 15 : 25);
+                  const marcadaPdf = selecionadasPdf.includes(q.id);
+
                   return (
-                    <div key={q.id} className="bg-white p-6 rounded-3xl border-2 border-slate-200 space-y-4">
+                    <div key={q.id} className={`bg-white p-6 rounded-3xl border-2 transition-all space-y-4 ${marcadaPdf ? 'border-amber-500 shadow-[4px_4px_0px_#F59E0B]' : 'border-slate-200'}`}>
                       <div className="flex flex-wrap justify-between items-center gap-2">
-                        <span className="text-xs font-black text-amber-600 uppercase">Questão 0{index + 1} • {q.titulo}</span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-black text-amber-600 uppercase">0{index + 1} • {q.disciplina}</span>
+                          <span className="text-[11px] font-black bg-indigo-50 text-indigo-800 border border-indigo-200 px-2.5 py-0.5 rounded-full">
+                            {q.pais || 'Brasil'} • {q.banca || 'EPP Nexo'}
+                          </span>
+                        </div>
+
                         <div className="flex items-center gap-2">
                           <span className="text-[11px] font-black bg-slate-100 px-2.5 py-1 rounded-full">{q.nivel || 'Médio'} • +{xpQuestao} XP</span>
-                          {escolhida && (
-                            <span className={`text-xs font-black px-3 py-1 rounded-full ${acertou ? 'bg-lime-400 text-slate-950' : 'bg-red-100 text-red-700'}`}>
-                              {acertou ? `Acertou (+${xpQuestao} XP)` : `Gabarito: ${q.correta}`}
-                            </span>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => toggleSelecaoPdf(q.id)}
+                            className={`text-xs font-black px-3 py-1 rounded-full border flex items-center gap-1.5 cursor-pointer transition-all ${
+                              marcadaPdf ? 'bg-amber-400 border-slate-900 text-slate-950' : 'bg-white border-slate-300 text-slate-600 hover:border-slate-900'
+                            }`}
+                          >
+                            {marcadaPdf ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
+                            {marcadaPdf ? 'No Caderno PDF' : 'Add ao PDF'}
+                          </button>
                         </div>
                       </div>
-                      <p className="text-sm font-bold text-slate-800 leading-relaxed">{q.enunciado}</p>
+
+                      <p className="text-xs font-black text-slate-500">{q.titulo}</p>
+                      <p className="text-sm font-bold text-slate-800 leading-relaxed whitespace-pre-wrap">{q.enunciado}</p>
+
                       <div className="space-y-2">
                         {['A', 'B', 'C', 'D'].map((letra) => {
                           let estilo = 'border-slate-200 hover:border-slate-900 hover:bg-slate-50';
@@ -809,9 +1211,15 @@ export default function PortalAluno() {
                           );
                         })}
                       </div>
+
                       {escolhida && (
                         <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs space-y-2">
-                          <p className="font-black">Resolução: <span className="font-normal text-slate-600">{q.resolucao_comentada}</span></p>
+                          <div className="flex justify-between items-center">
+                            <span className={`font-black ${acertou ? 'text-lime-700' : 'text-red-600'}`}>
+                              {acertou ? `Parabéns! Você ganhou +${xpQuestao} XP.` : `Resposta correta: Letra ${q.correta}`}
+                            </span>
+                          </div>
+                          <p className="text-slate-600"><strong>Resolução:</strong> {q.resolucao_comentada}</p>
                           {!acertou && !explicacoesTutor[q.id] && (
                             <button onClick={() => pedirAjudaTutorIA(q)} disabled={carregandoTutor === q.id} className="bg-slate-900 text-amber-400 font-black px-4 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer">
                               <HelpCircle className="w-3.5 h-3.5" /> {carregandoTutor === q.id ? 'Explicando...' : 'Pedir explicação ao Tutor IA'}
@@ -824,10 +1232,34 @@ export default function PortalAluno() {
                   );
                 })
               )}
+
+              {/* BARRA FLUTUANTE DO CADERNO DE QUESTÕES PDF */}
+              {selecionadasPdf.length > 0 && (
+                <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 bg-slate-950 text-white px-6 py-4 rounded-3xl border-2 border-amber-400 shadow-2xl flex flex-wrap items-center gap-4 animate-pop-in">
+                  <div>
+                    <p className="text-xs font-black text-amber-400">{selecionadasPdf.length} questão(ões) no seu caderno</p>
+                    <p className="text-[11px] text-slate-300">Pronto para gerar sua apostila em PDF diagramada</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setSelecionadasPdf([])}
+                      className="text-xs font-bold text-slate-400 hover:text-white px-3 py-2 cursor-pointer"
+                    >
+                      Limpar
+                    </button>
+                    <button
+                      onClick={() => setModalPreviewPdfAberto(true)}
+                      className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs px-5 py-3 rounded-2xl flex items-center gap-2 cursor-pointer"
+                    >
+                      <Printer className="w-4 h-4" /> Gerar Caderno PDF
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* OFICINA DE REDAÇÃO POR FOTO (CORREÇÃO EM 3 DIAS ÁUDIO+MARCAÇÃO OU IA RÁPIDA) */}
+          {/* REDAÇÃO POR FOTO */}
           {secaoAtiva === 'redacao' && (
             <div className="space-y-6 max-w-4xl animate-fade-up">
               <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#0f172a] space-y-4">
@@ -867,7 +1299,6 @@ export default function PortalAluno() {
                       )}
                     </div>
 
-                    {/* ESCOLHA ENTRE CORREÇÃO HUMANA (3 DIAS: ÁUDIO + MARCAÇÕES) OU IA IMEDIATA */}
                     <div className="grid sm:grid-cols-2 gap-4">
                       <button
                         type="button"
@@ -908,7 +1339,6 @@ export default function PortalAluno() {
                 )}
               </div>
 
-              {/* HISTÓRICO DE REDAÇÕES POR FOTO */}
               <div className="space-y-3">
                 <h2 className="font-black text-lg">Minhas Redações Enviadas ({minhasRedacoes.length})</h2>
                 {minhasRedacoes.map((r) => (
@@ -943,7 +1373,7 @@ export default function PortalAluno() {
             </div>
           )}
 
-          {/* PORTAL PARA TIRAR DÚVIDAS */}
+          {/* CENTRAL DE DÚVIDAS */}
           {secaoAtiva === 'duvidas' && (
             <div className="space-y-6 max-w-4xl animate-fade-up">
               <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#0f172a] space-y-4">
@@ -992,7 +1422,7 @@ export default function PortalAluno() {
             </div>
           )}
 
-          {/* PLANO IA, CADERNO DE ERROS, SIMULADOS, BIBLIOTECA, RANKING E DESEMPENHO */}
+          {/* PLANO IA, ERROS, SIMULADOS, BIBLIOTECA, RANKING E DESEMPENHO */}
           {secaoAtiva === 'plano' && (
             <div className="space-y-6 max-w-4xl animate-fade-up">
               <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#F59E0B] space-y-4">

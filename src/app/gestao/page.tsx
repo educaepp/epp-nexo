@@ -1,540 +1,434 @@
 ﻿'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { 
-  BookPlus, CheckSquare, FilePlus2, LogOut, PenSquare, 
-  Users, Trash2, Layers, Sparkles, Wand2, PlusCircle, 
-  CheckCircle2, AlertCircle, Bot, KeyRound, ExternalLink
+import {
+  Users, Layers, Camera, MessageSquare, Sparkles, Mic, Square,
+  CheckCircle2, Plus, Trash2, LogOut, Globe, Send, Volume2, Upload
 } from 'lucide-react';
 
 export default function PainelGestao() {
   const router = useRouter();
-  const [modulo, setModulo] = useState<'alunos' | 'ia' | 'atividade' | 'simulado' | 'redacao' | 'biblioteca'>('alunos');
-  const [mensagem, setMensagem] = useState('');
-  const [erroIa, setErroIa] = useState('');
+  const [usuario, setUsuario] = useState<any>(null);
+  const [aba, setAba] = useState<'questoes' | 'redacoes' | 'duvidas' | 'alunos'>('questoes');
 
-  const [atividadesList, setAtividadesList] = useState<any[]>([]);
-  const [simuladosList, setSimuladosList] = useState<any[]>([]);
-  const [redacoesPendentes, setRedacoesPendentes] = useState<any[]>([]);
-  const [livrosList, setLivrosList] = useState<any[]>([]);
-  const [usuariosList, setUsuariosList] = useState<any[]>([]);
-  const [corrigindoId, setCorrigindoId] = useState<string | null>(null);
+  // Dados
+  const [alunos, setAlunos] = useState<any[]>([]);
+  const [questoes, setQuestoes] = useState<any[]>([]);
+  const [redacoes, setRedacoes] = useState<any[]>([]);
+  const [duvidas, setDuvidas] = useState<any[]>([]);
 
-  // Gerador IA Real
-  const [iaSerie, setIaSerie] = useState('8º Ano');
-  const [iaDisciplina, setIaDisciplina] = useState('Matemática');
-  const [iaTema, setIaTema] = useState('');
-  const [iaNivel, setIaNivel] = useState('Médio (Contextualizado)');
-  const [iaQtd, setIaQtd] = useState(3);
-  const [gerandoIa, setGerandoIa] = useState(false);
-  const [bateriaGerada, setBateriaGerada] = useState<any[]>([]);
+  // Novo Aluno
+  const [novoNome, setNovoNome] = useState('');
+  const [novoEmail, setNovoEmail] = useState('');
+  const [novaSerie, setNovaSerie] = useState('9º Ano');
+  const [novaSenha, setNovaSenha] = useState('epp123');
 
-  // Formulário Atividade Manual
-  const [serieAtiv, setSerieAtiv] = useState('8º Ano');
-  const [disciplina, setDisciplina] = useState('Matemática');
-  const [tituloAtiv, setTituloAtiv] = useState('');
-  const [enunciado, setEnunciado] = useState('');
-  const [altA, setAltA] = useState('');
-  const [altB, setAltB] = useState('');
-  const [altC, setAltC] = useState('');
-  const [altD, setAltD] = useState('');
-  const [correta, setCorreta] = useState('A');
-  const [resolucao, setResolucao] = useState('');
-  const [simuladoVinculado, setSimuladoVinculado] = useState('');
+  // Gerador de Questões Mundiais
+  const [serieQ, setSerieQ] = useState('9º Ano');
+  const [disciplinaQ, setDisciplinaQ] = useState('Matemática');
+  const [paisBancaQ, setPaisBancaQ] = useState('Brasil | ENEM / OBMEP');
+  const [assuntoQ, setAssuntoQ] = useState('');
+  const [nivelQ, setNivelQ] = useState('Médio');
+  const [qtdQ, setQtdQ] = useState(3);
+  const [gerandoQ, setGerandoQ] = useState(false);
 
-  // Formulário Simulado
-  const [tituloSim, setTituloSim] = useState('');
-  const [serieSim, setSerieSim] = useState('8º Ano');
-  const [duracaoSim, setDuracaoSim] = useState(60);
+  // Importador em Lote JSON
+  const [jsonLote, setJsonLote] = useState('');
 
-  // Formulário Redação
-  const [temaRedacao, setTemaRedacao] = useState('');
-  const [textosApoio, setTextosApoio] = useState('');
+  // Estúdio de Correção de Redação por Foto
+  const [redacaoSelecionada, setRedacaoSelecionada] = useState<any>(null);
+  const [notaRed, setNotaRed] = useState(800);
+  const [parecerRed, setParecerRed] = useState('');
+  const [marcacoes, setMarcacoes] = useState<any[]>([]);
+  const [corPino, setCorPino] = useState<'verde' | 'amarelo' | 'vermelho'>('verde');
+  const [textoPino, setTextoPino] = useState('');
+  const [coordPendente, setCoordPendente] = useState<{ x: number; y: number } | null>(null);
 
-  // Formulário Biblioteca
-  const [tituloLivro, setTituloLivro] = useState('');
-  const [categoriaLivro, setCategoriaLivro] = useState('Apostila');
-  const [urlPdf, setUrlPdf] = useState('');
-  const [serieLivro, setSerieLivro] = useState('6º ao 9º Ano');
+  // Gravador de Áudio
+  const [gravandoAudio, setGravandoAudio] = useState(false);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
+  const [salvandoCorrecao, setSalvandoCorrecao] = useState(false);
 
-  // Formulário Alunos (Com Senha definida pela Gestão)
-  const [nomeAluno, setNomeAluno] = useState('');
-  const [emailAluno, setEmailAluno] = useState('');
-  const [senhaAluno, setSenhaAluno] = useState('epp123');
-  const [serieAluno, setSerieAluno] = useState('8º Ano');
-  const [perfilUsuario, setPerfilUsuario] = useState<'aluno' | 'gestao'>('aluno');
-  const [loteEmails, setLoteEmails] = useState('');
-  const [senhaLote, setSenhaLote] = useState('epp123');
-  const [serieLote, setSerieLote] = useState('8º Ano');
+  // Respostas Dúvidas
+  const [respostasDuvidas, setRespostasDuvidas] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const userStr = localStorage.getItem('epp_usuario');
     if (!userStr) { router.push('/login'); return; }
     const user = JSON.parse(userStr);
     if (user.perfil !== 'gestao') { router.push('/aluno'); return; }
+    setUsuario(user);
     carregarTudo();
   }, [router]);
 
   const carregarTudo = async () => {
-    const [ativs, sims, reds, libs, users] = await Promise.all([
-      supabase.from('atividades').select('*').order('criado_em', { ascending: false }),
-      supabase.from('simulados').select('*').order('criado_em', { ascending: false }),
+    const [als, qs, reds, duvs] = await Promise.all([
+      supabase.from('usuarios_autorizados').select('*').order('nome'),
+      supabase.from('atividades').select('*').order('criado_em', { ascending: false }).limit(40),
       supabase.from('redacoes_enviadas').select('*').order('enviado_em', { ascending: false }),
-      supabase.from('biblioteca').select('*').order('criado_em', { ascending: false }),
-      supabase.from('usuarios_autorizados').select('*').order('nome', { ascending: true })
+      supabase.from('duvidas_alunos').select('*').order('criado_em', { ascending: false })
     ]);
-    if (ativs.data) setAtividadesList(ativs.data);
-    if (sims.data) setSimuladosList(sims.data);
-    if (reds.data) setRedacoesPendentes(reds.data);
-    if (libs.data) setLivrosList(libs.data);
-    if (users.data) setUsuariosList(users.data);
+    if (als.data) setAlunos(als.data);
+    if (qs.data) setQuestoes(qs.data);
+    if (reds.data) setRedacoes(reds.data);
+    if (duvs.data) setDuvidas(duvs.data);
   };
 
-  const notificar = (texto: string) => {
-    setMensagem(texto);
-    setTimeout(() => setMensagem(''), 4500);
+  const cadastrarAluno = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!novoNome.trim() || !novoEmail.trim()) return;
+    await supabase.from('usuarios_autorizados').insert([{
+      nome: novoNome.trim(),
+      email: novoEmail.trim().toLowerCase(),
+      serie: novaSerie,
+      perfil: 'aluno',
+      senha: novaSenha.trim() || 'epp123',
+      xp: 0
+    }]);
+    setNovoNome('');
+    setNovoEmail('');
+    carregarTudo();
   };
 
-  const gerarBateriaComIA = async () => {
-    if (!iaTema.trim()) return notificar('Digite o assunto ou tema para a IA elaborar as questões!');
-    setGerandoIa(true);
-    setErroIa('');
-    setBateriaGerada([]);
+  const gerarQuestoesMundiais = async () => {
+    if (!assuntoQ.trim()) return alert('Informe o assunto das questões.');
+    setGerandoQ(true);
+    const [pais, banca] = paisBancaQ.split(' | ');
+    const xpAuto = nivelQ === 'Difícil' ? 40 : nivelQ === 'Fácil' ? 15 : 25;
 
     try {
       const res = await fetch('/api/gerar-questoes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          serie: iaSerie,
-          disciplina: iaDisciplina,
-          tema: iaTema.trim(),
-          quantidade: iaQtd,
-          nivel: iaNivel
-        })
-      });
-
-      const data = await res.json();
-      if (!res.ok) setErroIa(data.error || 'Falha ao gerar questões com a IA.');
-      else setBateriaGerada(data.questoes || []);
-    } catch {
-      setErroIa('Erro de conexão ao chamar a IA.');
-    } finally {
-      setGerandoIa(false);
-    }
-  };
-
-  const publicarBateriaIA = async () => {
-    if (bateriaGerada.length === 0) return;
-    await supabase.from('atividades').insert(bateriaGerada);
-    const total = bateriaGerada.length;
-    setBateriaGerada([]);
-    setIaTema('');
-    carregarTudo();
-    notificar(`${total} questões inéditas criadas pela IA foram publicadas para o ${iaSerie}!`);
-  };
-
-  const salvarAtividade = async () => {
-    if (!enunciado || !altA || !altB) return notificar('Preencha o enunciado e as alternativas!');
-    await supabase.from('atividades').insert([{
-      serie: serieAtiv,
-      disciplina,
-      titulo: tituloAtiv || `Questão de ${disciplina}`,
-      enunciado,
-      alternativa_a: altA,
-      alternativa_b: altB,
-      alternativa_c: altC || 'Nenhuma das anteriores',
-      alternativa_d: altD || 'Todas as anteriores',
-      correta,
-      resolucao_comentada: resolucao || 'Gabarito oficial confirmado pela equipe EPP.',
-      simulado_id: simuladoVinculado || null
-    }]);
-    setTituloAtiv(''); setEnunciado(''); setAltA(''); setAltB(''); setAltC(''); setAltD(''); setResolucao('');
-    carregarTudo();
-    notificar('Questão publicada com sucesso!');
-  };
-
-  const excluirItem = async (tabela: string, id: string) => {
-    await supabase.from(tabela).delete().eq('id', id);
-    carregarTudo();
-    notificar('Item removido com sucesso.');
-  };
-
-  const salvarSimulado = async () => {
-    if (!tituloSim) return;
-    await supabase.from('simulados').insert([{ titulo: tituloSim, serie_alvo: serieSim, duracao_minutos: duracaoSim, ativo: true }]);
-    setTituloSim('');
-    carregarTudo();
-    notificar('Simulado criado com sucesso!');
-  };
-
-  const salvarTemaRedacao = async () => {
-    if (!temaRedacao) return;
-    await supabase.from('temas_redacao').update({ ativo: false }).eq('ativo', true);
-    await supabase.from('temas_redacao').insert([{ titulo: temaRedacao, textos_apoio: textosApoio, ativo: true }]);
-    setTemaRedacao(''); setTextosApoio('');
-    notificar('Novo tema semanal de redação publicado!');
-  };
-
-  const corrigirRedacaoManual = async (id: string) => {
-    const nota = prompt('Digite a nota do aluno (ex: 880):');
-    if (!nota) return;
-    const comentario = prompt('Digite o feedback pedagógico para o aluno:');
-    await supabase.from('redacoes_enviadas').update({
-      nota: parseFloat(nota),
-      comentario_professor: comentario || 'Excelente evolução textual!',
-      corrigida: true
-    }).eq('id', id);
-    carregarTudo();
-    notificar('Nota e feedback enviados ao aluno!');
-  };
-
-  const corrigirRedacaoComIA = async (red: any) => {
-    setCorrigindoId(red.id);
-    try {
-      const res = await fetch('/api/corrigir-redacao', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tema: 'Tema Semanal EPP Nexo',
-          texto: red.texto_redacao,
-          serie: red.serie
+          serie: serieQ,
+          disciplina: disciplinaQ,
+          assunto: assuntoQ,
+          nivel: nivelQ,
+          quantidade: qtdQ,
+          pais,
+          banca
         })
       });
       const data = await res.json();
-      if (!res.ok) {
-        notificar(`Erro na IA: ${data.error}`);
-      } else {
-        const av = data.avaliacao;
-        const parecerCompleto = `Nota: ${av.nota_total}/1000 (C1: ${av.c1} | C2: ${av.c2} | C3: ${av.c3} | C4: ${av.c4} | C5: ${av.c5})\n\n✅ Pontos Fortes: ${av.pontos_fortes}\n\n🎯 O que melhorar: ${av.pontos_melhoria}\n\n💬 Parecer da Banca: ${av.comentario_geral}`;
-        await supabase.from('redacoes_enviadas').update({
-          nota: av.nota_total,
-          comentario_professor: parecerCompleto,
-          corrigida: true
-        }).eq('id', red.id);
+      if (data.questoes && Array.isArray(data.questoes)) {
+        const registros = data.questoes.map((q: any) => ({
+          serie: serieQ,
+          disciplina: disciplinaQ,
+          titulo: q.titulo,
+          enunciado: q.enunciado,
+          alternativa_a: q.alternativa_a,
+          alternativa_b: q.alternativa_b,
+          alternativa_c: q.alternativa_c,
+          alternativa_d: q.alternativa_d,
+          correta: q.correta,
+          resolucao_comentada: q.resolucao_comentada,
+          nivel: nivelQ,
+          xp_valor: xpAuto,
+          pais,
+          banca
+        }));
+        await supabase.from('atividades').insert(registros);
+        setAssuntoQ('');
         carregarTudo();
-        notificar(`Redação de ${red.aluno_nome} corrigida pela IA (${av.nota_total} pts)!`);
+        alert(`${registros.length} questões internacionais publicadas no banco!`);
       }
-    } catch {
-      notificar('Erro ao conectar com a IA corretora.');
     } finally {
-      setCorrigindoId(null);
+      setGerandoQ(false);
     }
   };
 
-  const salvarLivro = async () => {
-    if (!tituloLivro || !urlPdf) return;
-    await supabase.from('biblioteca').insert([{ titulo: tituloLivro, categoria: categoriaLivro, serie: serieLivro, url_pdf: urlPdf }]);
-    setTituloLivro(''); setUrlPdf('');
-    carregarTudo();
-    notificar('Material publicado na Biblioteca Virtual!');
+  const importarLoteJson = async () => {
+    try {
+      const parsed = JSON.parse(jsonLote);
+      if (!Array.isArray(parsed)) return alert('O formato precisa ser uma lista JSON [ {...}, {...} ]');
+      await supabase.from('atividades').insert(parsed);
+      setJsonLote('');
+      carregarTudo();
+      alert(`${parsed.length} questões importadas com sucesso!`);
+    } catch {
+      alert('JSON inválido. Verifique a estrutura e tente novamente.');
+    }
   };
 
-  const cadastrarUsuario = async () => {
-    if (!nomeAluno || !emailAluno || !senhaAluno) return notificar('Preencha nome, e-mail e senha!');
-    const { error } = await supabase.from('usuarios_autorizados').insert([{
-      nome: nomeAluno,
-      email: emailAluno.trim().toLowerCase(),
-      senha: senhaAluno.trim(),
-      perfil: perfilUsuario,
-      serie: serieAluno
+  const clicarNaFolhaRedacao = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+    const y = Math.round(((e.clientY - rect.top) / rect.height) * 100);
+    setCoordPendente({ x, y });
+  };
+
+  const adicionarMarcacaoColorida = () => {
+    if (!coordPendente || !textoPino.trim()) return;
+    setMarcacoes(prev => [...prev, { x: coordPendente.x, y: coordPendente.y, cor: corPino, texto: textoPino.trim() }]);
+    setCoordPendente(null);
+    setTextoPino('');
+  };
+
+  const iniciarGravacaoAudio = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      chunksRef.current = [];
+      recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        setAudioBlob(blob);
+        setAudioPreviewUrl(URL.createObjectURL(blob));
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setGravandoAudio(true);
+    } catch {
+      alert('Não foi possível acessar o microfone. Permita o uso nas configurações do navegador.');
+    }
+  };
+
+  const pararGravacaoAudio = () => {
+    mediaRecorderRef.current?.stop();
+    setGravandoAudio(false);
+  };
+
+  const finalizarCorrecaoRedacao = async () => {
+    if (!redacaoSelecionada) return;
+    setSalvandoCorrecao(true);
+
+    try {
+      let audioUrlFinal = redacaoSelecionada.audio_url || null;
+      if (audioBlob) {
+        const fileName = `audio_${redacaoSelecionada.id}_${Date.now()}.webm`;
+        const { error } = await supabase.storage.from('correcoes-audios').upload(fileName, audioBlob, { contentType: 'audio/webm', upsert: true });
+        if (!error) {
+          const { data } = supabase.storage.from('correcoes-audios').getPublicUrl(fileName);
+          if (data?.publicUrl) audioUrlFinal = data.publicUrl;
+        }
+      }
+
+      await supabase.from('redacoes_enviadas').update({
+        nota: Number(notaRed),
+        comentario_professor: parecerRed,
+        marcacoes_json: marcacoes,
+        audio_url: audioUrlFinal,
+        corrigida: true
+      }).eq('id', redacaoSelecionada.id);
+
+      await supabase.from('notificacoes').insert([{
+        destinatario_email: redacaoSelecionada.aluno_email,
+        titulo: `Redação Corrigida! Nota: ${notaRed}/1000`,
+        mensagem: 'Sua redação foi devolvida com áudio explicativo e marcações coloridas na folha.',
+        tipo: 'redacao'
+      }]);
+
+      setRedacaoSelecionada(null);
+      setAudioBlob(null);
+      setAudioPreviewUrl(null);
+      carregarTudo();
+    } finally {
+      setSalvandoCorrecao(false);
+    }
+  };
+
+  const responderDuvidaAluno = async (d: any) => {
+    const resp = respostasDuvidas[d.id];
+    if (!resp?.trim()) return;
+    await supabase.from('duvidas_alunos').update({ resposta_professor: resp.trim(), respondida: true }).eq('id', d.id);
+    await supabase.from('notificacoes').insert([{
+      destinatario_email: d.aluno_email,
+      titulo: `Dúvida Respondida (${d.disciplina})`,
+      mensagem: 'Um professor do EPP Nexo respondeu à sua pergunta na Central de Dúvidas.',
+      tipo: 'duvida'
     }]);
-    if (error) return notificar('Erro: Este e-mail já está cadastrado.');
-    setNomeAluno(''); setEmailAluno(''); setSenhaAluno('epp123');
     carregarTudo();
-    notificar('Usuário cadastrado com senha e acesso liberado!');
   };
 
-  const redefinirSenhaGestao = async (id: string, nome: string) => {
-    const nova = prompt(`Digite a nova senha para ${nome}:`);
-    if (!nova || nova.trim().length < 4) return;
-    await supabase.from('usuarios_autorizados').update({ senha: nova.trim() }).eq('id', id);
-    carregarTudo();
-    notificar(`Senha de ${nome} atualizada com sucesso!`);
-  };
-
-  const cadastrarEmLote = async () => {
-    if (!loteEmails.trim()) return;
-    const emails = loteEmails.split(/[\n,;]+/).map(e => e.trim().toLowerCase()).filter(e => e.includes('@'));
-    const registros = emails.map(email => ({
-      nome: email.split('@')[0],
-      email,
-      senha: senhaLote.trim() || 'epp123',
-      perfil: 'aluno',
-      serie: serieLote
-    }));
-    await supabase.from('usuarios_autorizados').upsert(registros, { onConflict: 'email' });
-    setLoteEmails('');
-    carregarTudo();
-    notificar(`${registros.length} alunos cadastrados para o ${serieLote} com senha "${senhaLote}"!`);
-  };
-
-  const sair = () => {
-    localStorage.removeItem('epp_usuario');
-    router.push('/login');
-  };
-
-  const totalAlunos = usuariosList.filter(u => u.perfil === 'aluno').length;
-  const redacoesAguardando = redacoesPendentes.filter(r => !r.corrigida).length;
+  if (!usuario) return null;
 
   return (
-    <div className="min-h-screen bg-[#F4F5F7] flex flex-col md:flex-row text-slate-900">
-      <aside className="w-full md:w-72 bg-slate-950 text-white p-6 flex flex-col justify-between shrink-0 border-r-2 border-slate-900">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="bg-amber-500 text-slate-950 font-black text-xl px-3 py-1 rounded-xl border-2 border-white shadow-[3px_3px_0px_#F59E0B]">
-              EPP NEXO
-            </span>
-          </div>
-          <p className="text-xs text-slate-400 mt-2 mb-6 font-medium">Central Pedagógica & Coordenação</p>
-
-          <nav className="space-y-2">
-            {[
-              { id: 'alunos', label: 'Alunos & Cadastros', icon: Users, badge: String(totalAlunos) },
-              { id: 'ia', label: 'Gerador IA de Listas', icon: Sparkles, badge: 'IA' },
-              { id: 'atividade', label: 'Questões & Trilhas', icon: FilePlus2 },
-              { id: 'simulado', label: 'Simulados', icon: CheckSquare },
-              { id: 'redacao', label: 'Redação & IA Corretora', icon: PenSquare, badge: redacoesAguardando > 0 ? String(redacoesAguardando) : undefined },
-              { id: 'biblioteca', label: 'Biblioteca Virtual', icon: BookPlus },
-            ].map((item) => {
-              const Icon = item.icon;
-              const ativo = modulo === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setModulo(item.id as any)}
-                  className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl font-bold text-sm cursor-pointer ${
-                    ativo
-                      ? 'bg-amber-500 text-slate-950 border-2 border-white shadow-[3px_3px_0px_#ffffff]'
-                      : 'hover:bg-slate-900 text-slate-300 border-2 border-transparent'
-                  }`}
-                >
-                  <span className="flex items-center gap-3">
-                    <Icon className="w-4 h-4" /> {item.label}
-                  </span>
-                  {item.badge && !ativo && (
-                    <span className="text-[10px] bg-lime-400 text-slate-950 font-black px-2 py-0.5 rounded-full">{item.badge}</span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-
-          <a
-            href="https://sistema-epp-rk66.vercel.app/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-6 w-full flex items-center justify-center gap-2 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-xs px-4 py-3 rounded-xl border-2 border-white"
-          >
-            Sistema EPP <ExternalLink className="w-3.5 h-3.5" />
-          </a>
+    <div className="min-h-screen bg-[#F1F5F9] text-slate-900">
+      <header className="bg-slate-950 text-white px-6 h-16 flex items-center justify-between sticky top-0 z-30">
+        <div className="flex items-center gap-3">
+          <Link href="/" className="bg-amber-500 text-slate-950 font-black px-3 py-1 rounded-xl text-sm">EPP NEXO • GESTÃO</Link>
         </div>
-
-        <button onClick={sair} className="mt-8 flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-900 px-4 py-3 rounded-xl cursor-pointer">
-          <LogOut className="w-4 h-4" /> Sair da Gestão
-        </button>
-      </aside>
-
-      <main className="flex-1 p-6 lg:p-10 overflow-y-auto">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white p-4 rounded-2xl border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]">
-            <p className="text-[10px] font-black uppercase text-slate-400">Alunos Cadastrados</p>
-            <p className="text-2xl font-black text-slate-900 mt-0.5">{totalAlunos}</p>
-          </div>
-          <div className="bg-white p-4 rounded-2xl border-2 border-slate-900 shadow-[3px_3px_0px_#F59E0B]">
-            <p className="text-[10px] font-black uppercase text-slate-400">Banco de Questões</p>
-            <p className="text-2xl font-black text-amber-600 mt-0.5">{atividadesList.length}</p>
-          </div>
-          <div className="bg-white p-4 rounded-2xl border-2 border-slate-900 shadow-[3px_3px_0px_#06b6d4]">
-            <p className="text-[10px] font-black uppercase text-slate-400">Simulados Ativos</p>
-            <p className="text-2xl font-black text-cyan-600 mt-0.5">{simuladosList.length}</p>
-          </div>
-          <div className="bg-white p-4 rounded-2xl border-2 border-slate-900 shadow-[3px_3px_0px_#84cc16]">
-            <p className="text-[10px] font-black uppercase text-slate-400">Redações Recebidas</p>
-            <p className="text-2xl font-black text-lime-600 mt-0.5">{redacoesPendentes.length}</p>
-          </div>
+        <div className="flex items-center gap-4 text-xs">
+          <span>{usuario.nome}</span>
+          <button onClick={() => { localStorage.removeItem('epp_usuario'); router.push('/login'); }} className="text-red-400 font-bold flex items-center gap-1 cursor-pointer">
+            <LogOut className="w-3.5 h-3.5" /> Sair
+          </button>
         </div>
+      </header>
 
-        {mensagem && (
-          <div className="mb-6 bg-lime-400 border-2 border-slate-900 text-slate-950 font-black px-5 py-3.5 rounded-2xl shadow-[4px_4px_0px_#0f172a] animate-pop-in flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5" /> {mensagem}
-          </div>
-        )}
-
-        {/* MÓDULO ALUNOS & CADASTROS (EXCLUSIVO GESTÃO) */}
-        {modulo === 'alunos' && (
-          <div className="grid lg:grid-cols-2 gap-8 animate-fade-up">
-            <div className="space-y-6">
-              <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#0f172a] space-y-3">
-                <h1 className="text-lg font-black">Cadastrar Novo Usuário (Com Senha)</h1>
-                <input type="text" value={nomeAluno} onChange={(e) => setNomeAluno(e.target.value)} placeholder="Nome completo" className="w-full p-3 border-2 border-slate-200 rounded-xl text-sm" />
-                <input type="email" value={emailAluno} onChange={(e) => setEmailAluno(e.target.value)} placeholder="E-mail de acesso" className="w-full p-3 border-2 border-slate-200 rounded-xl text-sm" />
-                <div className="grid grid-cols-3 gap-2.5">
-                  <input type="text" value={senhaAluno} onChange={(e) => setSenhaAluno(e.target.value)} placeholder="Senha inicial" className="p-3 border-2 border-amber-400 bg-amber-50 rounded-xl text-sm font-bold" />
-                  <select value={perfilUsuario} onChange={(e) => setPerfilUsuario(e.target.value as any)} className="p-3 border-2 border-slate-200 rounded-xl text-sm font-bold">
-                    <option value="aluno">Aluno</option><option value="gestao">Gestão</option>
-                  </select>
-                  <select value={serieAluno} onChange={(e) => setSerieAluno(e.target.value)} className="p-3 border-2 border-slate-200 rounded-xl text-sm font-bold">
-                    <option>6º Ano</option><option>7º Ano</option><option>8º Ano</option><option>9º Ano</option>
-                  </select>
-                </div>
-                <button onClick={cadastrarUsuario} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-3.5 rounded-xl text-sm cursor-pointer">
-                  Concluir Cadastro
-                </button>
-              </div>
-
-              <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#F59E0B] space-y-3">
-                <h2 className="text-lg font-black flex items-center gap-2"><Layers className="w-4 h-4 text-amber-500" /> Cadastro Rápido de Turma em Lote</h2>
-                <div className="grid grid-cols-2 gap-3">
-                  <select value={serieLote} onChange={(e) => setSerieLote(e.target.value)} className="w-full p-3 border-2 border-slate-200 rounded-xl text-sm font-bold">
-                    <option>6º Ano</option><option>7º Ano</option><option>8º Ano</option><option>9º Ano</option>
-                  </select>
-                  <input type="text" value={senhaLote} onChange={(e) => setSenhaLote(e.target.value)} placeholder="Senha padrão da turma" className="w-full p-3 border-2 border-amber-400 bg-amber-50 rounded-xl text-sm font-bold" />
-                </div>
-                <textarea rows={4} value={loteEmails} onChange={(e) => setLoteEmails(e.target.value)} placeholder="Cole vários e-mails (um por linha ou separados por vírgula)..." className="w-full p-3 border-2 border-slate-200 rounded-xl text-xs" />
-                <button onClick={cadastrarEmLote} className="w-full bg-amber-500 hover:bg-amber-400 font-black py-3.5 rounded-xl border-2 border-slate-900 text-sm cursor-pointer">
-                  Cadastrar Turma Inteira
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <h2 className="text-lg font-black">Usuários Cadastrados ({usuariosList.length})</h2>
-              <div className="space-y-2.5 max-h-[620px] overflow-y-auto pr-1">
-                {usuariosList.map(u => (
-                  <div key={u.id} className="bg-white p-4 rounded-2xl border-2 border-slate-200 flex justify-between items-center gap-3">
-                    <div>
-                      <p className="font-bold text-sm">
-                        {u.nome}{' '}
-                        <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded-full uppercase">{u.perfil} • {u.serie}</span>
-                      </p>
-                      <p className="text-xs text-slate-400">{u.email} • Senha: <strong className="text-slate-700">{u.senha || 'epp123'}</strong></p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => redefinirSenhaGestao(u.id, u.nome)}
-                        title="Alterar Senha"
-                        className="text-amber-600 hover:bg-amber-50 p-2 rounded-xl cursor-pointer"
-                      >
-                        <KeyRound className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => excluirItem('usuarios_autorizados', u.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-xl cursor-pointer">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* MÓDULO IA GERADOR DE QUESTÕES */}
-        {modulo === 'ia' && (
-          <div className="max-w-5xl space-y-8 animate-fade-up">
-            <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950 text-white p-8 rounded-3xl border-2 border-slate-900 shadow-[6px_6px_0px_#F59E0B]">
-              <span className="inline-flex items-center gap-1.5 bg-lime-400 text-slate-950 font-black text-[11px] px-3 py-1 rounded-full uppercase mb-3">
-                <Sparkles className="w-3.5 h-3.5" /> Inteligência Artificial EPP Nexo
-              </span>
-              <h1 className="text-2xl sm:text-3xl font-black">Criador Inteligente de Questões por Nível</h1>
-
-              <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3 mt-6 bg-white/10 p-4 rounded-2xl backdrop-blur-sm">
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-amber-300 mb-1">Série</label>
-                  <select value={iaSerie} onChange={(e) => setIaSerie(e.target.value)} className="w-full p-2.5 rounded-xl bg-slate-900 text-white border border-slate-700 text-sm font-bold">
-                    <option>6º Ano</option><option>7º Ano</option><option>8º Ano</option><option>9º Ano</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-amber-300 mb-1">Disciplina</label>
-                  <select value={iaDisciplina} onChange={(e) => setIaDisciplina(e.target.value)} className="w-full p-2.5 rounded-xl bg-slate-900 text-white border border-slate-700 text-sm font-bold">
-                    <option>Matemática</option><option>Linguagens</option><option>Ciências</option><option>Humanas</option>
-                  </select>
-                </div>
-                <div className="lg:col-span-2">
-                  <label className="block text-[10px] font-black uppercase text-amber-300 mb-1">Assunto / Tema Detalhado</label>
-                  <input type="text" value={iaTema} onChange={(e) => setIaTema(e.target.value)} placeholder="Ex: Equações do 1º Grau..." className="w-full p-2.5 rounded-xl bg-slate-900 text-white border border-slate-700 text-sm" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-amber-300 mb-1">Qtd. Questões</label>
-                  <select value={iaQtd} onChange={(e) => setIaQtd(Number(e.target.value))} className="w-full p-2.5 rounded-xl bg-slate-900 text-white border border-slate-700 text-sm font-bold">
-                    <option value={2}>2 Questões</option><option value={3}>3 Questões</option><option value={5}>5 Questões</option><option value={8}>8 Questões</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="mt-4 grid sm:grid-cols-3 gap-3">
-                {[
-                  { nome: 'Fácil (Fixação)', desc: 'Conceitos diretos e base teórica' },
-                  { nome: 'Médio (Contextualizado)', desc: 'Situações-problema e interpretação' },
-                  { nome: 'Profundo (Desafio & Raciocínio)', desc: 'Análise crítica e múltiplas etapas' }
-                ].map((nv) => (
-                  <button
-                    key={nv.nome}
-                    type="button"
-                    onClick={() => setIaNivel(nv.nome)}
-                    className={`p-3 rounded-2xl border-2 text-left transition cursor-pointer ${
-                      iaNivel === nv.nome
-                        ? 'bg-amber-500 text-slate-950 border-white font-black'
-                        : 'bg-slate-900/80 text-slate-300 border-slate-700 hover:border-slate-500'
-                    }`}
-                  >
-                    <p className="text-xs font-black">{nv.nome}</p>
-                    <p className={`text-[11px] mt-0.5 ${iaNivel === nv.nome ? 'text-slate-900' : 'text-slate-400'}`}>{nv.desc}</p>
-                  </button>
-                ))}
-              </div>
-
-              {erroIa && (
-                <div className="mt-4 bg-red-500/20 border border-red-400 text-red-200 p-3.5 rounded-xl text-xs font-bold flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" /> {erroIa}
-                </div>
-              )}
-
+      <div className="max-w-6xl mx-auto p-6 space-y-6">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { id: 'questoes', label: 'Banco Mundial de Questões', icon: Globe },
+            { id: 'redacoes', label: `Redações por Foto (${redacoes.filter(r => !r.corrigida).length} pendentes)`, icon: Camera },
+            { id: 'duvidas', label: `Dúvidas (${duvidas.filter(d => !d.respondida).length} abertas)`, icon: MessageSquare },
+            { id: 'alunos', label: `Alunos (${alunos.length})`, icon: Users },
+          ].map((t: any) => {
+            const Icon = t.icon;
+            return (
               <button
-                onClick={gerarBateriaComIA}
-                disabled={gerandoIa}
-                className="mt-6 bg-lime-400 hover:bg-lime-300 text-slate-950 font-black px-7 py-4 rounded-2xl border-2 border-slate-950 shadow-[4px_4px_0px_#000000] flex items-center gap-2 text-sm cursor-pointer"
+                key={t.id}
+                onClick={() => setAba(t.id)}
+                className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 border-2 cursor-pointer ${
+                  aba === t.id ? 'bg-amber-400 border-slate-900 text-slate-950 shadow-[3px_3px_0px_#0f172a]' : 'bg-white border-slate-200 text-slate-600'
+                }`}
               >
-                <Wand2 className={`w-4 h-4 ${gerandoIa ? 'animate-spin' : ''}`} />
-                {gerandoIa ? 'A IA está elaborando as questões...' : 'Gerar Questões com IA Agora'}
+                <Icon className="w-4 h-4" /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ABA 1: GERADOR MUNDIAL & IMPORTADOR */}
+        {aba === 'questoes' && (
+          <div className="grid lg:grid-cols-2 gap-6">
+            <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#0f172a] space-y-4">
+              <h2 className="text-lg font-black flex items-center gap-2"><Sparkles className="w-5 h-5 text-amber-500" /> Gerador de Vestibulares do Mundo (IA)</h2>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <select value={serieQ} onChange={(e) => setSerieQ(e.target.value)} className="p-3 border-2 border-slate-200 rounded-xl text-xs font-bold">
+                  <option>6º Ano</option><option>7º Ano</option><option>8º Ano</option><option>9º Ano</option>
+                </select>
+                <select value={disciplinaQ} onChange={(e) => setDisciplinaQ(e.target.value)} className="p-3 border-2 border-slate-200 rounded-xl text-xs font-bold">
+                  <option>Matemática</option><option>Linguagens</option><option>Ciências</option><option>Humanas</option>
+                </select>
+                <select value={paisBancaQ} onChange={(e) => setPaisBancaQ(e.target.value)} className="sm:col-span-2 p-3 border-2 border-slate-200 rounded-xl text-xs font-bold">
+                  <option>Brasil | ENEM / OBMEP</option>
+                  <option>Brasil | SSA-UPE / FUVEST</option>
+                  <option>EUA | SAT / ACT</option>
+                  <option>Internacional | PISA (OCDE)</option>
+                  <option>Reino Unido | Cambridge IGCSE / A-Levels</option>
+                  <option>Japão | EJU</option>
+                  <option>China | Gaokao</option>
+                  <option>Espanha | Selectividad</option>
+                </select>
+                <input type="text" value={assuntoQ} onChange={(e) => setAssuntoQ(e.target.value)} placeholder="Assunto (ex: Equações, Interpretação, Ecologia...)" className="sm:col-span-2 p-3 border-2 border-slate-200 rounded-xl text-xs" />
+                <select value={nivelQ} onChange={(e) => setNivelQ(e.target.value)} className="p-3 border-2 border-slate-200 rounded-xl text-xs font-bold">
+                  <option>Fácil</option><option>Médio</option><option>Difícil</option>
+                </select>
+                <input type="number" min={1} max={10} value={qtdQ} onChange={(e) => setQtdQ(Number(e.target.value))} className="p-3 border-2 border-slate-200 rounded-xl text-xs font-bold" />
+              </div>
+              <button onClick={gerarQuestoesMundiais} disabled={gerandoQ} className="w-full bg-slate-950 text-amber-400 font-black text-xs py-3.5 rounded-2xl cursor-pointer">
+                {gerandoQ ? 'Gerando questões internacionais...' : 'Gerar & Publicar no Banco'}
               </button>
             </div>
 
-            {bateriaGerada.length > 0 && (
-              <div className="space-y-4 animate-pop-in">
-                <div className="flex flex-wrap justify-between items-center gap-4 bg-white p-5 rounded-2xl border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a]">
-                  <div>
-                    <h2 className="font-black text-lg">Questões Geradas ({bateriaGerada.length}) • {iaNivel}</h2>
-                  </div>
-                  <button onClick={publicarBateriaIA} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-6 py-3 rounded-xl border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex items-center gap-2 text-sm cursor-pointer">
-                    <PlusCircle className="w-4 h-4" /> Publicar Todas no Portal
-                  </button>
+            <div className="bg-white p-6 rounded-3xl border-2 border-slate-200 space-y-4">
+              <h2 className="text-lg font-black">Importação em Lote (JSON)</h2>
+              <p className="text-xs text-slate-500">Cole um array JSON de questões reais de provas públicas para adicionar dezenas de questões instantaneamente.</p>
+              <textarea rows={7} value={jsonLote} onChange={(e) => setJsonLote(e.target.value)} placeholder='[{"serie":"9º Ano","disciplina":"Matemática","pais":"EUA","banca":"SAT","titulo":"Álgebra","enunciado":"...","alternativa_a":"...","alternativa_b":"...","alternativa_c":"...","alternativa_d":"...","correta":"A","nivel":"Médio","xp_valor":25}]' className="w-full p-3 border-2 border-slate-200 rounded-2xl text-xs font-mono" />
+              <button onClick={importarLoteJson} className="bg-amber-500 text-slate-950 font-black text-xs px-5 py-3 rounded-xl border-2 border-slate-900 cursor-pointer">
+                Importar Lote Agora
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ABA 2: ESTÚDIO DE REDAÇÃO POR FOTO (PINOS COLORIDOS + ÁUDIO + 3 DIAS) */}
+        {aba === 'redacoes' && (
+          <div className="space-y-6">
+            {redacaoSelecionada ? (
+              <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-xl space-y-5">
+                <div className="flex justify-between items-center">
+                  <h2 className="font-black text-lg">Corrigindo Redação de {redacaoSelecionada.aluno_nome} ({redacaoSelecionada.serie})</h2>
+                  <button onClick={() => setRedacaoSelecionada(null)} className="text-xs font-bold text-slate-500 cursor-pointer">Voltar à lista</button>
                 </div>
 
-                {bateriaGerada.map((item, idx) => (
-                  <div key={idx} className="bg-white p-6 rounded-2xl border-2 border-slate-200 space-y-3">
-                    <span className="text-xs font-black text-amber-600 uppercase">Questão 0{idx + 1} • {item.titulo}</span>
-                    <textarea
-                      rows={3}
-                      value={item.enunciado}
-                      onChange={(e) => {
-                        const copia = [...bateriaGerada];
-                        copia[idx].enunciado = e.target.value;
-                        setBateriaGerada(copia);
-                      }}
-                      className="w-full p-3 border border-slate-300 rounded-xl text-sm font-medium"
-                    />
-                    <div className="grid sm:grid-cols-2 gap-2 text-xs">
-                      <div className="p-2.5 bg-slate-50 rounded-lg border"><strong>A)</strong> {item.alternativa_a}</div>
-                      <div className="p-2.5 bg-slate-50 rounded-lg border"><strong>B)</strong> {item.alternativa_b}</div>
-                      <div className="p-2.5 bg-slate-50 rounded-lg border"><strong>C)</strong> {item.alternativa_c}</div>
-                      <div className="p-2.5 bg-slate-50 rounded-lg border"><strong>D)</strong> {item.alternativa_d}</div>
+                <div className="grid lg:grid-cols-2 gap-6">
+                  <div>
+                    <p className="text-xs font-black text-slate-500 mb-2">1. Clique em qualquer ponto da foto para colocar uma marcação colorida:</p>
+                    <div onClick={clicarNaFolhaRedacao} className="relative rounded-2xl border-2 border-slate-900 overflow-hidden cursor-crosshair bg-slate-100">
+                      <img src={redacaoSelecionada.foto_url} alt="Folha do aluno" className="w-full h-auto" />
+                      {marcacoes.map((m, i) => (
+                        <span
+                          key={i}
+                          style={{ left: `${m.x}%`, top: `${m.y}%` }}
+                          className={`-translate-x-1/2 -translate-y-1/2 absolute w-7 h-7 rounded-full font-black text-xs border-2 border-slate-950 flex items-center justify-center ${
+                            m.cor === 'verde' ? 'bg-lime-400' : m.cor === 'vermelho' ? 'bg-red-500 text-white' : 'bg-amber-400'
+                          }`}
+                        >
+                          {i + 1}
+                        </span>
+                      ))}
                     </div>
-                    <p className="text-xs text-lime-900 bg-lime-100 p-3 rounded-xl font-bold">
-                      Gabarito: Letra {item.correta} — {item.resolucao_comentada}
-                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    {coordPendente && (
+                      <div className="bg-amber-50 border-2 border-amber-400 p-4 rounded-2xl space-y-2">
+                        <p className="text-xs font-black">Nova marcação em ({coordPendente.x}%, {coordPendente.y}%):</p>
+                        <div className="flex gap-2">
+                          {(['verde', 'amarelo', 'vermelho'] as const).map(c => (
+                            <button key={c} type="button" onClick={() => setCorPino(c)} className={`px-3 py-1 rounded-lg text-xs font-black uppercase border ${corPino === c ? 'border-slate-900 ring-2 ring-slate-900' : 'border-slate-300'}`}>
+                              {c}
+                            </button>
+                          ))}
+                        </div>
+                        <input type="text" value={textoPino} onChange={(e) => setTextoPino(e.target.value)} placeholder="Comentário deste ponto..." className="w-full p-2.5 border rounded-xl text-xs bg-white" />
+                        <button type="button" onClick={adicionarMarcacaoColorida} className="bg-slate-900 text-white text-xs font-black px-4 py-2 rounded-xl cursor-pointer">Fixar Pino na Folha</button>
+                      </div>
+                    )}
+
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
+                      <p className="text-xs font-black">2. Gravar Áudio da Correção pelo Microfone:</p>
+                      <div className="flex items-center gap-3">
+                        {!gravandoAudio ? (
+                          <button type="button" onClick={iniciarGravacaoAudio} className="bg-red-600 text-white font-black text-xs px-4 py-2.5 rounded-xl flex items-center gap-1.5 cursor-pointer">
+                            <Mic className="w-4 h-4" /> Gravar Áudio
+                          </button>
+                        ) : (
+                          <button type="button" onClick={pararGravacaoAudio} className="bg-slate-900 text-amber-400 font-black text-xs px-4 py-2.5 rounded-xl flex items-center gap-1.5 animate-pulse cursor-pointer">
+                            <Square className="w-4 h-4" /> Parar Gravação
+                          </button>
+                        )}
+                        {audioPreviewUrl && <audio controls src={audioPreviewUrl} className="h-9 flex-1" />}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-black mb-1">Nota Final (0 a 1000)</label>
+                        <input type="number" max={1000} min={0} value={notaRed} onChange={(e) => setNotaRed(Number(e.target.value))} className="w-full p-2.5 border-2 border-slate-300 rounded-xl text-xs font-black" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-black mb-1">Parecer Escrito Complementar</label>
+                      <textarea rows={3} value={parecerRed} onChange={(e) => setParecerRed(e.target.value)} className="w-full p-3 border-2 border-slate-300 rounded-xl text-xs" />
+                    </div>
+
+                    <button onClick={finalizarCorrecaoRedacao} disabled={salvandoCorrecao} className="w-full bg-lime-400 hover:bg-lime-300 text-slate-950 font-black text-xs py-3.5 rounded-2xl border-2 border-slate-900 cursor-pointer">
+                      {salvandoCorrecao ? 'Publicando devolutiva...' : 'Enviar Correção ao Aluno (Notificar)'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {redacoes.map(r => (
+                  <div key={r.id} className="bg-white p-5 rounded-3xl border-2 border-slate-200 flex flex-wrap justify-between items-center gap-4">
+                    <div>
+                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${r.corrigida ? 'bg-lime-400' : 'bg-amber-300'}`}>
+                        {r.corrigida ? `Corrigida (${r.nota}/1000)` : `Pendente • Entrega até ${r.prazo_entrega ? new Date(r.prazo_entrega).toLocaleDateString('pt-BR') : '3 dias'}`}
+                      </span>
+                      <h3 className="font-black text-sm mt-1">{r.aluno_nome} ({r.serie})</h3>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setRedacaoSelecionada(r);
+                        setNotaRed(r.nota || 800);
+                        setParecerRed(r.comentario_professor || '');
+                        setMarcacoes(r.marcacoes_json || []);
+                      }}
+                      className="bg-slate-900 text-amber-400 font-black text-xs px-4 py-2.5 rounded-xl cursor-pointer"
+                    >
+                      Abrir Folha & Corrigir
+                    </button>
                   </div>
                 ))}
               </div>
@@ -542,179 +436,60 @@ export default function PainelGestao() {
           </div>
         )}
 
-        {/* MÓDULO QUESTÕES MANUAIS */}
-        {modulo === 'atividade' && (
-          <div className="grid lg:grid-cols-2 gap-8 animate-fade-up">
-            <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#0f172a] space-y-4">
-              <h1 className="text-xl font-black">Cadastrar Questão Manualmente</h1>
-              <div className="grid grid-cols-2 gap-3">
-                <select value={serieAtiv} onChange={(e) => setSerieAtiv(e.target.value)} className="w-full p-2.5 border-2 border-slate-200 rounded-xl text-sm font-bold">
-                  <option>6º Ano</option><option>7º Ano</option><option>8º Ano</option><option>9º Ano</option>
-                </select>
-                <select value={disciplina} onChange={(e) => setDisciplina(e.target.value)} className="w-full p-2.5 border-2 border-slate-200 rounded-xl text-sm font-bold">
-                  <option>Matemática</option><option>Linguagens</option><option>Ciências</option><option>Humanas</option>
-                </select>
-              </div>
-              <select value={simuladoVinculado} onChange={(e) => setSimuladoVinculado(e.target.value)} className="w-full p-2.5 border-2 border-slate-200 rounded-xl text-sm bg-slate-50">
-                <option value="">Atividade de Trilha Regular (Livre)</option>
-                {simuladosList.map(s => <option key={s.id} value={s.id}>{s.titulo} ({s.serie_alvo})</option>)}
-              </select>
-              <input type="text" value={tituloAtiv} onChange={(e) => setTituloAtiv(e.target.value)} placeholder="Assunto / Título" className="w-full p-2.5 border-2 border-slate-200 rounded-xl text-sm" />
-              <textarea rows={3} value={enunciado} onChange={(e) => setEnunciado(e.target.value)} placeholder="Enunciado completo..." className="w-full p-2.5 border-2 border-slate-200 rounded-xl text-sm" />
-              <div className="grid grid-cols-2 gap-3">
-                <input type="text" value={altA} onChange={(e) => setAltA(e.target.value)} placeholder="Alternativa A" className="p-2.5 border-2 border-slate-200 rounded-xl text-xs" />
-                <input type="text" value={altB} onChange={(e) => setAltB(e.target.value)} placeholder="Alternativa B" className="p-2.5 border-2 border-slate-200 rounded-xl text-xs" />
-                <input type="text" value={altC} onChange={(e) => setAltC(e.target.value)} placeholder="Alternativa C" className="p-2.5 border-2 border-slate-200 rounded-xl text-xs" />
-                <input type="text" value={altD} onChange={(e) => setAltD(e.target.value)} placeholder="Alternativa D" className="p-2.5 border-2 border-slate-200 rounded-xl text-xs" />
-              </div>
-              <div className="grid grid-cols-3 gap-3 items-center">
-                <select value={correta} onChange={(e) => setCorreta(e.target.value)} className="w-full p-2.5 border-2 border-lime-500 bg-lime-50 font-black rounded-xl text-sm">
-                  <option value="A">Letra A</option><option value="B">Letra B</option><option value="C">Letra C</option><option value="D">Letra D</option>
-                </select>
-                <input type="text" value={resolucao} onChange={(e) => setResolucao(e.target.value)} placeholder="Resolução comentada..." className="col-span-2 w-full p-2.5 border-2 border-slate-200 rounded-xl text-sm" />
-              </div>
-              <button onClick={salvarAtividade} className="w-full bg-amber-500 hover:bg-amber-400 font-black py-3.5 rounded-xl border-2 border-slate-900 text-sm cursor-pointer">
-                Publicar Questão
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <h2 className="text-lg font-black">Questões Publicadas ({atividadesList.length})</h2>
-              <div className="space-y-3 max-h-[620px] overflow-y-auto pr-1">
-                {atividadesList.map(a => (
-                  <div key={a.id} className="bg-white p-4 rounded-2xl border-2 border-slate-200 flex justify-between items-start gap-3">
-                    <div>
-                      <span className="text-[10px] font-black bg-cyan-100 text-cyan-900 px-2.5 py-0.5 rounded-full">{a.serie} • {a.disciplina}</span>
-                      <p className="font-bold text-sm mt-1.5">{a.titulo}</p>
-                      <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{a.enunciado}</p>
-                    </div>
-                    <button onClick={() => excluirItem('atividades', a.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-xl cursor-pointer">
-                      <Trash2 className="w-4 h-4" />
+        {/* ABA 3: DÚVIDAS DOS ALUNOS */}
+        {aba === 'duvidas' && (
+          <div className="space-y-3">
+            {duvidas.map(d => (
+              <div key={d.id} className="bg-white p-5 rounded-3xl border-2 border-slate-200 space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-xs font-black text-amber-600">{d.aluno_nome} ({d.serie}) • {d.disciplina}</span>
+                  <span className="text-[10px] font-black">{d.respondida ? 'Respondida' : 'Aguardando'}</span>
+                </div>
+                <p className="text-sm font-bold">{d.pergunta}</p>
+                {d.respondida ? (
+                  <p className="text-xs bg-lime-50 p-3 rounded-xl border border-lime-400"><strong>Resposta enviada:</strong> {d.resposta_professor}</p>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={respostasDuvidas[d.id] || ''}
+                      onChange={(e) => setRespostasDuvidas(p => ({ ...p, [d.id]: e.target.value }))}
+                      placeholder="Escreva a resposta para o aluno..."
+                      className="flex-1 p-2.5 border-2 border-slate-300 rounded-xl text-xs"
+                    />
+                    <button onClick={() => responderDuvidaAluno(d)} className="bg-slate-900 text-amber-400 font-black text-xs px-4 py-2.5 rounded-xl flex items-center gap-1 cursor-pointer">
+                      <Send className="w-3.5 h-3.5" /> Responder
                     </button>
                   </div>
-                ))}
+                )}
               </div>
-            </div>
+            ))}
           </div>
         )}
 
-        {/* MÓDULO SIMULADOS */}
-        {modulo === 'simulado' && (
-          <div className="grid lg:grid-cols-2 gap-8 animate-fade-up">
-            <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#0f172a] space-y-4 h-fit">
-              <h1 className="text-xl font-black">Criar Novo Simulado</h1>
-              <input type="text" value={tituloSim} onChange={(e) => setTituloSim(e.target.value)} placeholder="Ex: 1º Simulado Bimestral EPP" className="w-full p-3 border-2 border-slate-200 rounded-xl text-sm" />
-              <div className="grid grid-cols-2 gap-3">
-                <select value={serieSim} onChange={(e) => setSerieSim(e.target.value)} className="p-3 border-2 border-slate-200 rounded-xl text-sm font-bold">
-                  <option>6º Ano</option><option>7º Ano</option><option>8º Ano</option><option>9º Ano</option>
-                </select>
-                <input type="number" value={duracaoSim} onChange={(e) => setDuracaoSim(Number(e.target.value))} placeholder="Minutos" className="p-3 border-2 border-slate-200 rounded-xl text-sm font-bold" />
-              </div>
-              <button onClick={salvarSimulado} className="w-full bg-cyan-400 text-slate-950 font-black py-3.5 rounded-xl border-2 border-slate-900 text-sm cursor-pointer">
-                Criar Simulado
-              </button>
-            </div>
-            <div className="space-y-3">
-              <h2 className="text-lg font-black">Simulados Ativos ({simuladosList.length})</h2>
-              {simuladosList.map(s => (
-                <div key={s.id} className="bg-white p-4 rounded-2xl border-2 border-slate-200 flex justify-between items-center">
-                  <div>
-                    <span className="text-[10px] font-black bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full">{s.serie_alvo} • {s.duracao_minutos} min</span>
-                    <p className="font-bold text-sm mt-1">{s.titulo}</p>
-                  </div>
-                  <button onClick={() => excluirItem('simulados', s.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-xl cursor-pointer">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+        {/* ABA 4: ALUNOS */}
+        {aba === 'alunos' && (
+          <div className="space-y-6">
+            <form onSubmit={cadastrarAluno} className="bg-white p-6 rounded-3xl border-2 border-slate-900 grid sm:grid-cols-4 gap-3">
+              <input type="text" required value={novoNome} onChange={(e) => setNovoNome(e.target.value)} placeholder="Nome do aluno" className="p-3 border rounded-xl text-xs" />
+              <input type="email" required value={novoEmail} onChange={(e) => setNovoEmail(e.target.value)} placeholder="E-mail" className="p-3 border rounded-xl text-xs" />
+              <select value={novaSerie} onChange={(e) => setNovaSerie(e.target.value)} className="p-3 border rounded-xl text-xs font-bold">
+                <option>6º Ano</option><option>7º Ano</option><option>8º Ano</option><option>9º Ano</option>
+              </select>
+              <button type="submit" className="bg-amber-500 font-black text-xs rounded-xl border-2 border-slate-900 cursor-pointer">Cadastrar Aluno</button>
+            </form>
+
+            <div className="bg-white p-5 rounded-3xl border-2 border-slate-200 space-y-2">
+              {alunos.map((a, i) => (
+                <div key={i} className="flex justify-between items-center p-3 border-b last:border-none text-xs">
+                  <span><strong>{a.nome}</strong> ({a.email}) • {a.serie}</span>
+                  <span className="font-black bg-slate-100 px-2.5 py-1 rounded-full">{a.xp || 0} XP</span>
                 </div>
               ))}
             </div>
           </div>
         )}
-
-        {/* MÓDULO REDAÇÃO */}
-        {modulo === 'redacao' && (
-          <div className="space-y-6 max-w-4xl animate-fade-up">
-            <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#0f172a] space-y-3">
-              <h2 className="text-lg font-black">Publicar Tema da Semana</h2>
-              <input type="text" value={temaRedacao} onChange={(e) => setTemaRedacao(e.target.value)} placeholder="Título do tema semanal..." className="w-full p-3 border-2 border-slate-200 rounded-xl text-sm" />
-              <textarea rows={3} value={textosApoio} onChange={(e) => setTextosApoio(e.target.value)} placeholder="Instruções e textos motivadores..." className="w-full p-3 border-2 border-slate-200 rounded-xl text-sm" />
-              <button onClick={salvarTemaRedacao} className="bg-amber-500 font-black px-6 py-3 rounded-xl border-2 border-slate-900 text-sm cursor-pointer">
-                Atualizar Tema Ativo
-              </button>
-            </div>
-            <div className="bg-white p-6 rounded-3xl border-2 border-slate-200 space-y-4">
-              <h2 className="text-lg font-black">Redações Enviadas ({redacoesPendentes.length})</h2>
-              {redacoesPendentes.map((red) => (
-                <div key={red.id} className="p-5 bg-slate-50 rounded-2xl border-2 border-slate-200 space-y-3">
-                  <div className="flex flex-wrap justify-between items-center gap-2">
-                    <div>
-                      <p className="font-black text-sm">{red.aluno_nome} • {red.serie}</p>
-                      <p className="text-[11px] text-slate-400">{red.aluno_email}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {red.corrigida ? (
-                        <span className="bg-lime-400 border border-slate-900 text-slate-950 text-xs font-black px-3.5 py-1.5 rounded-full">Nota: {red.nota}</span>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => corrigirRedacaoComIA(red)}
-                            disabled={corrigindoId === red.id}
-                            className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-4 py-2 rounded-xl border border-slate-900 text-xs flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <Bot className="w-3.5 h-3.5" />
-                            {corrigindoId === red.id ? 'IA Corrigindo...' : 'Corrigir com IA'}
-                          </button>
-                          <button onClick={() => corrigirRedacaoManual(red.id)} className="bg-slate-900 text-white font-bold px-4 py-2 rounded-xl text-xs cursor-pointer">
-                            Nota Manual
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <p className="text-xs text-slate-700 bg-white p-4 rounded-xl border border-slate-200 whitespace-pre-wrap leading-relaxed">{red.texto_redacao}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* MÓDULO BIBLIOTECA */}
-        {modulo === 'biblioteca' && (
-          <div className="grid lg:grid-cols-2 gap-8 animate-fade-up">
-            <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#0f172a] space-y-4 h-fit">
-              <h1 className="text-xl font-black">Adicionar Material na Biblioteca</h1>
-              <input type="text" value={tituloLivro} onChange={(e) => setTituloLivro(e.target.value)} placeholder="Título do Livro ou Apostila" className="w-full p-3 border-2 border-slate-200 rounded-xl text-sm" />
-              <div className="grid grid-cols-2 gap-3">
-                <select value={categoriaLivro} onChange={(e) => setCategoriaLivro(e.target.value)} className="p-3 border-2 border-slate-200 rounded-xl text-sm font-bold">
-                  <option>Apostila</option><option>Livro Paradidático</option><option>Mapa Mental</option>
-                </select>
-                <select value={serieLivro} onChange={(e) => setSerieLivro(e.target.value)} className="p-3 border-2 border-slate-200 rounded-xl text-sm font-bold">
-                  <option>6º ao 9º Ano</option><option>6º Ano</option><option>7º Ano</option><option>8º Ano</option><option>9º Ano</option>
-                </select>
-              </div>
-              <input type="url" value={urlPdf} onChange={(e) => setUrlPdf(e.target.value)} placeholder="Link do PDF (Google Drive da escola)" className="w-full p-3 border-2 border-slate-200 rounded-xl text-sm" />
-              <button onClick={salvarLivro} className="w-full bg-lime-400 font-black py-3.5 rounded-xl border-2 border-slate-900 text-sm cursor-pointer">
-                Publicar na Biblioteca
-              </button>
-            </div>
-            <div className="space-y-3">
-              <h2 className="text-lg font-black">Acervo Publicado ({livrosList.length})</h2>
-              {livrosList.map(l => (
-                <div key={l.id} className="bg-white p-4 rounded-2xl border-2 border-slate-200 flex justify-between items-center">
-                  <div>
-                    <span className="text-[10px] font-black bg-cyan-100 text-cyan-800 px-2.5 py-0.5 rounded-full">{l.categoria} • {l.serie}</span>
-                    <p className="font-bold text-sm mt-1">{l.titulo}</p>
-                  </div>
-                  <button onClick={() => excluirItem('biblioteca', l.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-xl cursor-pointer">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </main>
+      </div>
     </div>
   );
 }
-
