@@ -298,7 +298,7 @@ export default function PainelGestao() {
                   <option>Matemática</option><option>Linguagens</option><option>Ciências</option><option>Humanas</option>
                 </select>
                 <select value={paisBancaQ} onChange={(e) => setPaisBancaQ(e.target.value)} className="sm:col-span-2 p-3 border-2 border-slate-200 rounded-xl text-xs font-bold">
-                  <option>Brasil | ENEM / OBMEP</option>
+                  <option>Brasil | IFPE (Instituto Federal de PE)</option><option>Brasil | ETE-PE (Escolas Técnicas Estaduais)</option><option>Brasil | ENEM / OBMEP</option>
                   <option>Brasil | SSA-UPE / FUVEST</option>
                   <option>EUA | SAT / ACT</option>
                   <option>Internacional | PISA (OCDE)</option>
@@ -493,3 +493,4 @@ export default function PainelGestao() {
     </div>
   );
 }
+
