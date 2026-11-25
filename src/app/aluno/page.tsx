@@ -44,6 +44,7 @@ export default function PortalAluno() {
   const [pomodoroSegundos, setPomodoroSegundos] = useState(25 * 60);
   const [pomodoroRodando, setPomodoroRodando] = useState(false);
   const [ciclosConcluidos, setCiclosConcluidos] = useState(0);
+  const [minutosEstudadosTotal, setMinutosEstudadosTotal] = useState(0);
 
   // Plano de Estudos
   const [demandaObjetivo, setDemandaObjetivo] = useState('');
@@ -91,6 +92,10 @@ export default function PortalAluno() {
     if (!userStr) { router.push('/login'); return; }
     const user = JSON.parse(userStr);
     setUsuario(user);
+    const minsSalvos = Number(localStorage.getItem('epp_mins_' + user.email) || 0);
+    const ciclosSalvos = Number(localStorage.getItem('epp_ciclos_' + user.email) || 0);
+    setMinutosEstudadosTotal(minsSalvos);
+    setCiclosConcluidos(ciclosSalvos);
     carregarDados(user);
   }, [router]);
 
@@ -112,7 +117,16 @@ export default function PortalAluno() {
         if (prev <= 1) {
           setPomodoroRodando(false);
           if (pomodoroModo === 'foco') {
-            setCiclosConcluidos(c => c + 1);
+            setCiclosConcluidos(c => {
+              const novoC = c + 1;
+              if (usuario?.email) localStorage.setItem('epp_ciclos_' + usuario.email, String(novoC));
+              return novoC;
+            });
+            setMinutosEstudadosTotal(m => {
+              const novoM = m + 25;
+              if (usuario?.email) localStorage.setItem('epp_mins_' + usuario.email, String(novoM));
+              return novoM;
+            });
             ganharXP(15);
             setPomodoroModo('pausa');
             return 5 * 60;
@@ -1551,21 +1565,227 @@ export default function PortalAluno() {
             </div>
           )}
 
-          {secaoAtiva === 'desempenho' && (
-            <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 max-w-4xl space-y-4 animate-fade-up">
-              <h1 className="text-2xl font-black">Raio-X de Desempenho</h1>
-              {estatisticasPorMateria.map(st => (
-                <div key={st.nome} className="space-y-1">
-                  <div className="flex justify-between text-xs font-black"><span>{st.nome}</span><span>{st.taxa !== null ? `${st.taxa}%` : '0%'}</span></div>
-                  <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-lime-500" style={{ width: `${st.taxa || 0}%` }} /></div>
+          {secaoAtiva === 'desempenho' && (() => {
+            const redacoesCorrigidas = minhasRedacoes.filter(r => r.nota != null);
+            const mediaRedacoes = redacoesCorrigidas.length > 0
+              ? Math.round(redacoesCorrigidas.reduce((acc, r) => acc + Number(r.nota), 0) / redacoesCorrigidas.length)
+              : null;
+
+            const materiasComDados = estatisticasPorMateria.filter(m => m.total > 0);
+            const melhorMateria = [...materiasComDados].sort((a, b) => (b.taxa || 0) - (a.taxa || 0))[0];
+            const piorMateria = [...materiasComDados].sort((a, b) => (a.taxa || 0) - (b.taxa || 0))[0];
+
+            const ultimos7Dias = Array.from({ length: 7 }, (_, i) => {
+              const d = new Date();
+              d.setDate(d.getDate() - (6 - i));
+              const chave = d.toISOString().slice(0, 10);
+              const label = d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
+              const qtd = historicoRespostas.filter(r => (r.respondido_em || '').startsWith(chave)).length;
+              return { label, qtd };
+            });
+            const maxDia = Math.max(...ultimos7Dias.map(d => d.qtd), 4);
+            const horasFormatadas = minutosEstudadosTotal >= 60
+              ? `${Math.floor(minutosEstudadosTotal / 60)}h ${minutosEstudadosTotal % 60}m`
+              : `${minutosEstudadosTotal} min`;
+
+            return (
+              <div className="space-y-6 max-w-5xl animate-fade-up">
+                <div className="bg-slate-950 text-white p-7 rounded-3xl border-2 border-slate-900 shadow-[6px_6px_0px_#F59E0B] flex flex-wrap justify-between items-center gap-4">
+                  <div>
+                    <span className="text-[10px] font-black uppercase bg-amber-400 text-slate-950 px-3 py-1 rounded-full">
+                      Analytics Pedagógico • {usuario.serie}
+                    </span>
+                    <h1 className="text-2xl sm:text-3xl font-black mt-2">Raio-X Completo de Evolução</h1>
+                    <p className="text-xs text-slate-300 mt-1">
+                      Acompanhe seu tempo de concentração, precisão nas questões, notas de redação e recomendações personalizadas.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setPomodoroModalAberto(true)}
+                    className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs px-5 py-3 rounded-2xl border-2 border-slate-900 flex items-center gap-2 cursor-pointer"
+                  >
+                    <Clock className="w-4 h-4" /> Abrir Pomodoro (+25 min)
+                  </button>
                 </div>
-              ))}
-            </div>
-          )}
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-white p-5 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] space-y-1">
+                    <span className="text-[10px] font-black uppercase text-amber-600">Tempo de Estudo</span>
+                    <p className="text-2xl font-black text-slate-950">{horasFormatadas}</p>
+                    <p className="text-[11px] text-slate-500">{ciclosConcluidos} ciclo(s) Pomodoro</p>
+                  </div>
+
+                  <div className="bg-white p-5 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#84cc16] space-y-1">
+                    <span className="text-[10px] font-black uppercase text-lime-700">Questões Resolvidas</span>
+                    <p className="text-2xl font-black text-slate-950">{totalRespondidas}</p>
+                    <p className="text-[11px] text-slate-500">{totalAcertos} acertos ({taxaGeral}% precisão)</p>
+                  </div>
+
+                  <div className="bg-white p-5 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#38bdf8] space-y-1">
+                    <span className="text-[10px] font-black uppercase text-cyan-700">Redações Enviadas</span>
+                    <p className="text-2xl font-black text-slate-950">{minhasRedacoes.length}</p>
+                    <p className="text-[11px] text-slate-500">
+                      {mediaRedacoes !== null ? `Média: ${mediaRedacoes}/1000` : 'Aguardando 1ª nota'}
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-5 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#a855f7] space-y-1">
+                    <span className="text-[10px] font-black uppercase text-purple-700">Nível & Pontuação</span>
+                    <p className="text-2xl font-black text-slate-950">{usuario.xp || 0} XP</p>
+                    <p className="text-[11px] text-slate-500">Patente: <strong>{patente}</strong></p>
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div className="bg-lime-50 border-2 border-lime-500 p-5 rounded-3xl space-y-1.5">
+                    <span className="text-[10px] font-black uppercase bg-lime-400 text-slate-950 px-2.5 py-0.5 rounded-full">Ponto Forte</span>
+                    <h3 className="font-black text-sm text-slate-900">
+                      {melhorMateria ? `${melhorMateria.nome} (${melhorMateria.taxa}% de acerto)` : 'Comece a resolver questões'}
+                    </h3>
+                    <p className="text-xs text-slate-600">
+                      {melhorMateria
+                        ? `Excelente desempenho em ${melhorMateria.nome}! Experimente desafios nível Difícil para ganhar +40 XP.`
+                        : 'Resolva exercícios no Banco Mundial para descobrirmos sua disciplina de maior destaque.'}
+                    </p>
+                  </div>
+
+                  <div className="bg-amber-50 border-2 border-amber-400 p-5 rounded-3xl space-y-1.5">
+                    <span className="text-[10px] font-black uppercase bg-amber-400 text-slate-950 px-2.5 py-0.5 rounded-full">Foco Recomendado</span>
+                    <h3 className="font-black text-sm text-slate-900">
+                      {piorMateria && (piorMateria.taxa || 0) < 75
+                        ? `Reforçar ${piorMateria.nome} (${piorMateria.taxa}%)`
+                        : 'Ritmo Equilibrado'}
+                    </h3>
+                    <p className="text-xs text-slate-600">
+                      {questoesParaRevisar.length > 0
+                        ? `Você tem ${questoesParaRevisar.length} questão(ões) no Caderno de Erros prontas para superação.`
+                        : 'Continue alternando entre questões objetivas e redação semanal.'}
+                    </p>
+                  </div>
+
+                  <div className="bg-indigo-50 border-2 border-indigo-400 p-5 rounded-3xl flex flex-col justify-between gap-3">
+                    <div>
+                      <span className="text-[10px] font-black uppercase bg-indigo-600 text-white px-2.5 py-0.5 rounded-full">Próximo Passo</span>
+                      <h3 className="font-black text-sm text-slate-900 mt-1.5">Acelere sua preparação</h3>
+                      <p className="text-xs text-slate-600 mt-0.5">Use seus dados reais para gerar um roteiro semanal sob medida.</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setSecaoAtiva('plano')} className="bg-slate-900 text-amber-400 text-[11px] font-black px-3 py-2 rounded-xl cursor-pointer">
+                        Gerar Plano IA
+                      </button>
+                      {questoesParaRevisar.length > 0 && (
+                        <button onClick={() => setSecaoAtiva('erros')} className="bg-white border border-slate-900 text-slate-900 text-[11px] font-black px-3 py-2 rounded-xl cursor-pointer">
+                          Revisar Erros
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid lg:grid-cols-2 gap-6">
+                  <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 space-y-4">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h2 className="font-black text-base">Constância nos Últimos 7 Dias</h2>
+                        <p className="text-xs text-slate-500">Volume diário de questões praticadas</p>
+                      </div>
+                      <span className="text-[11px] font-black bg-slate-100 px-3 py-1 rounded-full">Meta: 5/dia</span>
+                    </div>
+
+                    <div className="h-44 flex items-end justify-between gap-2 pt-4 px-2 border-b border-slate-200">
+                      {ultimos7Dias.map((dia, idx) => {
+                        const alturaPct = Math.max(Math.round((dia.qtd / maxDia) * 100), dia.qtd > 0 ? 18 : 6);
+                        return (
+                          <div key={idx} className="flex-1 flex flex-col items-center gap-1.5">
+                            <span className="text-[10px] font-black text-slate-700">{dia.qtd > 0 ? dia.qtd : ''}</span>
+                            <div className="w-full max-w-[36px] bg-slate-100 rounded-t-xl h-32 flex items-end overflow-hidden">
+                              <div
+                                style={{ height: `${alturaPct}%` }}
+                                className={`w-full rounded-t-xl transition-all duration-500 ${dia.qtd > 0 ? 'bg-amber-400 border-t-2 border-x-2 border-slate-900' : 'bg-slate-200'}`}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex justify-between px-2 text-[11px] font-black uppercase text-slate-500">
+                      {ultimos7Dias.map((dia, idx) => (
+                        <span key={idx} className="flex-1 text-center">{dia.label}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 space-y-4">
+                    <div>
+                      <h2 className="font-black text-base">Aproveitamento por Área</h2>
+                      <p className="text-xs text-slate-500">Percentual de acertos e total respondido por matéria</p>
+                    </div>
+
+                    <div className="space-y-4 pt-1">
+                      {estatisticasPorMateria.map((st) => {
+                        const pct = st.taxa || 0;
+                        const corBarra = pct >= 75 ? 'bg-lime-400' : pct >= 50 ? 'bg-amber-400' : st.total > 0 ? 'bg-red-400' : 'bg-slate-200';
+                        return (
+                          <div key={st.nome} className="space-y-1.5">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="font-black text-slate-900">{st.nome}</span>
+                              <span className="font-bold text-slate-500">
+                                {st.acertos}/{st.total} acertos • <strong className="text-slate-950">{pct}%</strong>
+                              </span>
+                            </div>
+                            <div className="w-full h-3.5 bg-slate-100 rounded-full border border-slate-300 overflow-hidden">
+                              <div className={`h-full ${corBarra} transition-all duration-500`} style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 space-y-4">
+                  <div className="flex flex-wrap justify-between items-center gap-2">
+                    <div>
+                      <h2 className="font-black text-base">Histórico & Evolução das Redações</h2>
+                      <p className="text-xs text-slate-500">Notas recebidas nas redações enviadas por foto (escala 0 a 1000)</p>
+                    </div>
+                    <button onClick={() => setSecaoAtiva('redacao')} className="text-xs font-black text-amber-700 hover:underline cursor-pointer">
+                      Ir para Oficina de Redação →
+                    </button>
+                  </div>
+
+                  {redacoesCorrigidas.length === 0 ? (
+                    <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl text-xs text-slate-500 text-center">
+                      Você ainda não possui redações com nota lançada. Envie uma foto na aba <strong>Redação por Foto</strong> para acompanhar sua curva de evolução aqui!
+                    </div>
+                  ) : (
+                    <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-3">
+                      {redacoesCorrigidas.slice().reverse().map((red, idx) => (
+                        <div key={red.id} className="p-4 rounded-2xl border-2 border-slate-200 bg-slate-50 space-y-2">
+                          <div className="flex justify-between items-center text-[10px] font-black text-slate-500">
+                            <span>REDAÇÃO #{idx + 1}</span>
+                            <span>{new Date(red.enviado_em).toLocaleDateString('pt-BR')}</span>
+                          </div>
+                          <p className="text-2xl font-black text-slate-950">{red.nota} <span className="text-xs font-bold text-slate-400">/1000</span></p>
+                          <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-indigo-600" style={{ width: `${Math.min((Number(red.nota) / 1000) * 100, 100)}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </main>
       </div>
     </div>
   );
 }
+
+
+
+
 
 
