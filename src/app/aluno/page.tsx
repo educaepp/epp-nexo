@@ -67,6 +67,40 @@ export default function PortalAluno() {
   const [demandaObjetivo, setDemandaObjetivo] = useState('');
   const [horasEstudo, setHorasEstudo] = useState('1 hora');
   const [gerandoPlano, setGerandoPlano] = useState(false);
+  const [objetivoPlano, setObjetivoPlano] = useState('Aprovação IFPE / ETE-PE');
+  const [dificuldadePlano, setDificuldadePlano] = useState('');
+  const [planoGerado, setPlanoGerado] = useState('');
+
+  const gerarPlanoIA = async () => {
+    if (!usuario) return;
+    setGerandoPlano(true);
+    try {
+      const res = await fetch('/api/plano-estudos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome: usuario.nome,
+          serie: usuario.serie,
+          objetivo: objetivoPlano,
+          dificuldades: dificuldadePlano || 'Reforço geral nas matérias principais'
+        })
+      });
+      const data = await res.json();
+      const texto = data.plano || data.resultado || data.content || 'Não foi possível gerar o plano agora. Tente novamente.';
+      setPlanoGerado(texto);
+      await supabase.from('planos_estudo').insert([{
+        aluno_email: usuario.email,
+        objetivo: objetivoPlano,
+        dificuldades: dificuldadePlano,
+        conteudo: texto
+      }]);
+      ganharXP(15);
+    } catch {
+      alert('Erro ao conectar com o Tutor IA. Verifique sua conexão e tente novamente.');
+    } finally {
+      setGerandoPlano(false);
+    }
+  };
   const [planoAtivo, setPlanoAtivo] = useState<any>(null);
 
   // Questões, XP & Caderno PDF Personalizado
@@ -1101,6 +1135,70 @@ export default function PortalAluno() {
         </aside>
 
         <main className="flex-1 p-6 lg:p-10">
+          {secaoAtiva === 'plano' && (
+            <div className="space-y-6 max-w-4xl animate-fade-up">
+              <div className="bg-slate-950 text-white p-7 rounded-3xl border-2 border-slate-900 shadow-[6px_6px_0px_#F59E0B] space-y-2">
+                <span className="text-[10px] font-black uppercase bg-amber-400 text-slate-950 px-3 py-1 rounded-full">
+                  Tutor Inteligente EPP • {usuario.serie}
+                </span>
+                <h1 className="text-2xl sm:text-3xl font-black">Plano de Estudos IA Sob Demanda</h1>
+                <p className="text-xs text-slate-300">
+                  Informe seu objetivo (IFPE, ETE-PE, OBMEP ou prova da escola) e suas dificuldades para gerar um roteiro semanal exclusivo.
+                </p>
+              </div>
+
+              <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] space-y-4">
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Objetivo Principal</label>
+                    <select
+                      value={objetivoPlano}
+                      onChange={e => setObjetivoPlano(e.target.value)}
+                      className="w-full border-2 border-slate-300 p-3 rounded-2xl font-bold text-xs bg-white"
+                    >
+                      <option value="Aprovação IFPE / ETE-PE">Aprovação IFPE / ETE-PE</option>
+                      <option value="Medalha na OBMEP">Medalha na OBMEP</option>
+                      <option value="Reforço Escolar & Notas">Reforço Escolar & Notas</option>
+                      <option value="Base Forte para o ENEM">Base Forte para o ENEM</option>
+                    </select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Matérias ou Assuntos com Maior Dificuldade</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Frações, equação do 1º grau, interpretação de texto, redação..."
+                      value={dificuldadePlano}
+                      onChange={e => setDificuldadePlano(e.target.value)}
+                      className="w-full border-2 border-slate-300 p-3 rounded-2xl text-xs"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  disabled={gerandoPlano}
+                  onClick={gerarPlanoIA}
+                  className="bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-slate-950 font-black text-xs px-6 py-3.5 rounded-2xl border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex items-center gap-2 cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {gerandoPlano ? 'Montando seu cronograma com IA...' : 'Gerar Meu Plano de Estudos Agora'}
+                </button>
+              </div>
+
+              {planoGerado && (
+                <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <h2 className="font-black text-base flex items-center gap-2">
+                      <Calendar className="w-5 h-5 text-amber-500" /> Seu Roteiro Personalizado
+                    </h2>
+                    <span className="text-[11px] font-black bg-lime-100 text-lime-800 px-3 py-1 rounded-full">Salvo no seu perfil</span>
+                  </div>
+                  <div className="text-sm text-slate-800 whitespace-pre-line leading-relaxed bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                    {planoGerado}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {/* VISÃO GERAL */}
           {secaoAtiva === 'inicio' && (
             <div className="space-y-8 max-w-5xl animate-fade-up">
@@ -2249,6 +2347,8 @@ export default function PortalAluno() {
     </div>
   );
 }
+
+
 
 
 
