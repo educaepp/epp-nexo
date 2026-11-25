@@ -145,14 +145,45 @@ export default function PainelGestao() {
 
   const importarLoteJson = async () => {
     try {
-      const parsed = JSON.parse(jsonLote);
+      const limpo = jsonLote.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(limpo);
       if (!Array.isArray(parsed)) return alert('O formato precisa ser uma lista JSON [ {...}, {...} ]');
-      await supabase.from('atividades').insert(parsed);
+
+      const normalizado = parsed.map((q: any) => {
+        const s = String(q.serie || '9º Ano');
+        const seriePadrao = s.includes('6') ? '6º Ano' : s.includes('7') ? '7º Ano' : s.includes('8') ? '8º Ano' : '9º Ano';
+        const d = String(q.disciplina || 'Matemática').toLowerCase();
+        const discPadrao = d.includes('mat') ? 'Matemática' : d.includes('cien') || d.includes('ciên') ? 'Ciências' : d.includes('hum') || d.includes('hist') || d.includes('geo') ? 'Humanas' : 'Linguagens';
+
+        return {
+          serie: seriePadrao,
+          disciplina: discPadrao,
+          pais: q.pais || 'Brasil',
+          banca: q.banca || 'IFPE / ETE',
+          titulo: q.titulo || 'Questão de Treino',
+          enunciado: q.enunciado,
+          alternativa_a: q.alternativa_a,
+          alternativa_b: q.alternativa_b,
+          alternativa_c: q.alternativa_c,
+          alternativa_d: q.alternativa_d,
+          correta: String(q.correta || 'A').trim().toUpperCase(),
+          resolucao_comentada: q.resolucao_comentada || '',
+          nivel: q.nivel || 'Médio',
+          xp_valor: Number(q.xp_valor) || 25
+        };
+      });
+
+      const { error } = await supabase.from('atividades').insert(normalizado);
+      if (error) {
+        alert(`Erro ao salvar no Supabase: ${error.message}`);
+        return;
+      }
+
       setJsonLote('');
       carregarTudo();
-      alert(`${parsed.length} questões importadas com sucesso!`);
-    } catch {
-      alert('JSON inválido. Verifique a estrutura e tente novamente.');
+      alert(`${normalizado.length} questões importadas e já disponíveis para os alunos!`);
+    } catch (err: any) {
+      alert(`JSON inválido: ${err.message}`);
     }
   };
 
@@ -493,4 +524,5 @@ export default function PainelGestao() {
     </div>
   );
 }
+
 
