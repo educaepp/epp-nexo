@@ -7,13 +7,14 @@ import {
   Home, Layers, PenTool, BarChart2, BookOpen, Clock, 
   ChevronDown, ChevronRight, Flame, CheckCircle2, 
   XCircle, FileText, ArrowRight, LogOut, Menu, X,
-  Printer, CheckSquare, Square, Sparkles, Trophy, Bot, HelpCircle
+  Printer, CheckSquare, Square, Sparkles, Trophy, Bot, 
+  HelpCircle, Calendar, Target, RotateCcw, Play, Pause, AlertTriangle
 } from 'lucide-react';
 
 export default function PortalAluno() {
   const router = useRouter();
   const [usuario, setUsuario] = useState<any>(null);
-  const [secaoAtiva, setSecaoAtiva] = useState<'inicio' | 'conteudo' | 'redacao' | 'simulados' | 'biblioteca' | 'ranking' | 'desempenho'>('inicio');
+  const [secaoAtiva, setSecaoAtiva] = useState<'inicio' | 'plano' | 'conteudo' | 'erros' | 'redacao' | 'simulados' | 'biblioteca' | 'ranking' | 'desempenho'>('inicio');
   const [materiaSelecionada, setMateriaSelecionada] = useState<string>('Matemática');
   const [menuConteudosAberto, setMenuConteudosAberto] = useState(true);
   const [menuMobileAberto, setMenuMobileAberto] = useState(false);
@@ -24,10 +25,21 @@ export default function PortalAluno() {
   const [minhasRedacoes, setMinhasRedacoes] = useState<any[]>([]);
   const [livros, setLivros] = useState<any[]>([]);
   const [rankingAlunos, setRankingAlunos] = useState<any[]>([]);
+  const [historicoRespostas, setHistoricoRespostas] = useState<any[]>([]);
+
+  // Plano de Estudos Personalizado por Demanda
+  const [demandaObjetivo, setDemandaObjetivo] = useState('');
+  const [horasEstudo, setHorasEstudo] = useState('1 hora');
+  const [gerandoPlano, setGerandoPlano] = useState(false);
+  const [planoAtivo, setPlanoAtivo] = useState<any>(null);
+  const [diasConcluidos, setDiasConcluidos] = useState<number[]>([]);
+
+  // Timer Pomodoro Modo Foco
+  const [pomodoroSegundos, setPomodoroSegundos] = useState(25 * 60);
+  const [pomodoroRodando, setPomodoroRodando] = useState(false);
 
   // Respostas interativas, XP e Tutor IA
   const [respostasAluno, setRespostasAluno] = useState<Record<string, string>>({});
-  const [acertosSessao, setAcertosSessao] = useState(0);
   const [explicacoesTutor, setExplicacoesTutor] = useState<Record<string, string>>({});
   const [carregandoTutor, setCarregandoTutor] = useState<string | null>(null);
 
@@ -75,14 +87,30 @@ export default function PortalAluno() {
     return () => clearInterval(timer);
   }, [simuladoEmAndamento, tempoRestante]);
 
+  useEffect(() => {
+    if (!pomodoroRodando) return;
+    const timer = setInterval(() => {
+      setPomodoroSegundos((prev) => {
+        if (prev <= 1) {
+          setPomodoroRodando(false);
+          return 25 * 60;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [pomodoroRodando]);
+
   const carregarDados = async (user: any) => {
-    const [ativs, sims, tema, reds, libs, rank] = await Promise.all([
+    const [ativs, sims, tema, reds, libs, rank, hist, planos] = await Promise.all([
       supabase.from('atividades').select('*').eq('serie', user.serie),
       supabase.from('simulados').select('*').eq('serie_alvo', user.serie).eq('ativo', true),
       supabase.from('temas_redacao').select('*').eq('ativo', true).single(),
       supabase.from('redacoes_enviadas').select('*').eq('aluno_email', user.email).order('enviado_em', { ascending: false }),
       supabase.from('biblioteca').select('*'),
-      supabase.from('usuarios_autorizados').select('nome, serie, xp').eq('perfil', 'aluno').order('xp', { ascending: false }).limit(10)
+      supabase.from('usuarios_autorizados').select('nome, serie, xp').eq('perfil', 'aluno').order('xp', { ascending: false }).limit(10),
+      supabase.from('respostas_alunos').select('*').eq('aluno_email', user.email).order('respondido_em', { ascending: false }),
+      supabase.from('planos_estudo').select('*').eq('aluno_email', user.email).order('criado_em', { ascending: false }).limit(1)
     ]);
     if (ativs.data) setAtividades(ativs.data);
     if (sims.data) setSimulados(sims.data);
@@ -90,20 +118,35 @@ export default function PortalAluno() {
     if (reds.data) setMinhasRedacoes(reds.data);
     if (libs.data) setLivros(libs.data.filter(l => l.serie === '6º ao 9º Ano' || l.serie === user.serie));
     if (rank.data) setRankingAlunos(rank.data);
+    if (hist.data) setHistoricoRespostas(hist.data);
+    if (planos.data && planos.data.length > 0) setPlanoAtivo(planos.data[0].plano_json);
   };
 
-  const responderQuestao = async (questao: any, letra: string) => {
-    if (respostasAluno[questao.id]) return;
-    setRespostasAluno(prev => ({ ...prev, [questao.id]: letra }));
+  const ganharXP = async (pontos: number) => {
+    const novoXp = (usuario.xp || 0) + pontos;
+    const atualizado = { ...usuario, xp: novoXp };
+    setUsuario(atualizado);
+    localStorage.setItem('epp_usuario', JSON.stringify(atualizado));
+    await supabase.from('usuarios_autorizados').update({ xp: novoXp }).eq('email', usuario.email);
+  };
 
-    if (letra === questao.correta) {
-      const novoXp = (usuario.xp || 0) + 20;
-      setAcertosSessao(prev => prev + 1);
-      const atualizado = { ...usuario, xp: novoXp };
-      setUsuario(atualizado);
-      localStorage.setItem('epp_usuario', JSON.stringify(atualizado));
-      await supabase.from('usuarios_autorizados').update({ xp: novoXp }).eq('email', usuario.email);
+  const responderQuestao = async (questao: any, letra: string, modoSuperacao = false) => {
+    if (respostasAluno[questao.id] && !modoSuperacao) return;
+    setRespostasAluno(prev => ({ ...prev, [questao.id]: letra }));
+    const acertou = letra === questao.correta;
+
+    await supabase.from('respostas_alunos').insert([{
+      aluno_email: usuario.email,
+      questao_id: questao.id,
+      disciplina: questao.disciplina,
+      assunto: questao.titulo,
+      acertou
+    }]);
+
+    if (acertou) {
+      await ganharXP(modoSuperacao ? 25 : 20);
     }
+    carregarDados(usuario);
   };
 
   const pedirAjudaTutorIA = async (questao: any) => {
@@ -127,6 +170,77 @@ export default function PortalAluno() {
     } finally {
       setCarregandoTutor(null);
     }
+  };
+
+  // Diagnóstico conectado das disciplinas
+  const estatisticasPorMateria = materias.map((m) => {
+    const respMat = historicoRespostas.filter(r => r.disciplina === m.nome);
+    const total = respMat.length;
+    const acertos = respMat.filter(r => r.acertou).length;
+    const taxa = total > 0 ? Math.round((acertos / total) * 100) : null;
+    return { nome: m.nome, total, acertos, taxa };
+  });
+
+  const gerarPlanoEstudosIA = async () => {
+    if (!demandaObjetivo.trim()) return;
+    setGerandoPlano(true);
+    setDiasConcluidos([]);
+
+    const fracas = estatisticasPorMateria
+      .filter(e => e.taxa !== null && e.taxa < 70)
+      .map(e => `${e.nome} (${e.taxa}% de acerto)`)
+      .join(', ');
+
+    const assuntosErrados = Array.from(new Set(
+      historicoRespostas.filter(r => !r.acertou && r.assunto).map(r => r.assunto)
+    )).slice(0, 6).join(', ');
+
+    const redacoesComNota = minhasRedacoes.filter(r => r.nota != null);
+    const mediaRed = redacoesComNota.length > 0
+      ? Math.round(redacoesComNota.reduce((acc, r) => acc + Number(r.nota), 0) / redacoesComNota.length)
+      : null;
+
+    try {
+      const res = await fetch('/api/plano-estudos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome: usuario.nome,
+          serie: usuario.serie,
+          objetivo: demandaObjetivo.trim(),
+          horasPorDia: horasEstudo,
+          materiasFracas: fracas,
+          assuntosErrados,
+          mediaRedacao: mediaRed
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.plano) {
+        setPlanoAtivo(data.plano);
+        await supabase.from('planos_estudo').insert([{
+          aluno_email: usuario.email,
+          objetivo: demandaObjetivo.trim(),
+          plano_json: data.plano
+        }]);
+      }
+    } finally {
+      setGerandoPlano(false);
+    }
+  };
+
+  const concluirDiaPlano = async (idx: number) => {
+    if (diasConcluidos.includes(idx)) return;
+    setDiasConcluidos(prev => [...prev, idx]);
+    await ganharXP(15);
+  };
+
+  const executarAcaoDoPlano = (diaItem: any) => {
+    if (diaItem.materia_alvo) setMateriaSelecionada(diaItem.materia_alvo);
+    if (diaItem.acao_modulo === 'redacao') setSecaoAtiva('redacao');
+    else if (diaItem.acao_modulo === 'simulados') setSecaoAtiva('simulados');
+    else if (diaItem.acao_modulo === 'biblioteca') setSecaoAtiva('biblioteca');
+    else if (diaItem.acao_modulo === 'erros') setSecaoAtiva('erros');
+    else setSecaoAtiva('conteudo');
   };
 
   const toggleSelecaoPdf = (id: string) => {
@@ -156,8 +270,6 @@ export default function PortalAluno() {
           .q-enunciado { font-size: 14px; font-weight: bold; margin-bottom: 10px; line-height: 1.5; }
           .alternativa { font-size: 13px; margin: 5px 0 5px 12px; }
           .gabarito-box { margin-top: 40px; padding: 20px; background: #f8fafc; border: 2px solid #0f172a; border-radius: 12px; page-break-before: always; }
-          .gabarito-box h2 { margin-top: 0; font-size: 16px; }
-          .gab-item { font-size: 12px; margin-bottom: 8px; }
         </style>
       </head>
       <body>
@@ -181,10 +293,7 @@ export default function PortalAluno() {
         <div class="gabarito-box">
           <h2>Gabarito Oficial & Resolução Comentada</h2>
           ${questoesEscolhidas.map((q, i) => `
-            <div class="gab-item">
-              <strong>Questão 0${i + 1} — Resposta: Letra ${q.correta}</strong><br/>
-              <span>${q.resolucao_comentada}</span>
-            </div>
+            <p style="font-size:12px;"><strong>Questão 0${i + 1} — Resposta: Letra ${q.correta}</strong><br/>${q.resolucao_comentada}</p>
           `).join('')}
         </div>
         <script>window.onload = function() { window.print(); };</script>
@@ -202,13 +311,30 @@ export default function PortalAluno() {
     setResultadoSimulado(null);
   };
 
-  const finalizarSimulado = () => {
+  const finalizarSimulado = async () => {
     const questoesSim = atividades.filter(a => a.simulado_id === simuladoEmAndamento?.id);
     const listaFinal = questoesSim.length > 0 ? questoesSim : atividades;
     let acertos = 0;
-    listaFinal.forEach(q => { if (respostasSimulado[q.id] === q.correta) acertos++; });
+
+    for (const q of listaFinal) {
+      const resp = respostasSimulado[q.id];
+      if (resp) {
+        const acertou = resp === q.correta;
+        if (acertou) acertos++;
+        await supabase.from('respostas_alunos').insert([{
+          aluno_email: usuario.email,
+          questao_id: q.id,
+          disciplina: q.disciplina,
+          assunto: q.titulo,
+          acertou
+        }]);
+      }
+    }
+
+    if (acertos > 0) await ganharXP(acertos * 15);
     setResultadoSimulado({ acertos, total: listaFinal.length });
     setSimuladoEmAndamento(null);
+    carregarDados(usuario);
   };
 
   const formatarLinkEmbed = (url: string) => {
@@ -243,16 +369,10 @@ export default function PortalAluno() {
           notaFinal = av.nota_total;
           jaCorrigida = true;
           comentarioFinal = `[Correção IA EPP] C1: ${av.c1} | C2: ${av.c2} | C3: ${av.c3} | C4: ${av.c4} | C5: ${av.c5}\n\n✅ Pontos Fortes: ${av.pontos_fortes}\n\n🎯 Melhorias: ${av.pontos_melhoria}\n\n💬 Parecer: ${av.comentario_geral}`;
-
-          // Ganha +50 XP por concluir redação corrigida
-          const novoXp = (usuario.xp || 0) + 50;
-          const atualizado = { ...usuario, xp: novoXp };
-          setUsuario(atualizado);
-          localStorage.setItem('epp_usuario', JSON.stringify(atualizado));
-          await supabase.from('usuarios_autorizados').update({ xp: novoXp }).eq('email', usuario.email);
+          await ganharXP(50);
         }
       } catch {
-        // Fallback para envio manual ao professor
+        // fallback manual
       }
     }
 
@@ -283,7 +403,13 @@ export default function PortalAluno() {
   if (!usuario) return null;
 
   const questoesDaMateria = atividades.filter(a => a.disciplina === materiaSelecionada && !a.simulado_id);
+  const idsErrados = new Set(historicoRespostas.filter(r => !r.acertou).map(r => r.questao_id));
+  const questoesParaRevisar = atividades.filter(a => idsErrados.has(a.id));
   const patente = (usuario.xp || 0) >= 500 ? 'Lenda EPP' : (usuario.xp || 0) >= 200 ? 'Mestre Nexo' : (usuario.xp || 0) >= 60 ? 'Explorador' : 'Iniciante';
+
+  const totalRespondidas = historicoRespostas.length;
+  const totalAcertos = historicoRespostas.filter(r => r.acertou).length;
+  const taxaGeral = totalRespondidas > 0 ? Math.round((totalAcertos / totalRespondidas) * 100) : 0;
 
   return (
     <div className="min-h-screen bg-[#F4F5F7] text-slate-900 flex flex-col">
@@ -317,7 +443,7 @@ export default function PortalAluno() {
         </div>
       )}
 
-      {/* HEADER */}
+      {/* HEADER COM MODO FOCO POMODORO */}
       <header className="bg-white/95 backdrop-blur-md border-b-2 border-slate-200 h-16 px-4 lg:px-8 flex items-center justify-between sticky top-0 z-30">
         <div className="flex items-center gap-4">
           <button onClick={() => setMenuMobileAberto(!menuMobileAberto)} className="lg:hidden p-2 rounded-lg hover:bg-slate-100">
@@ -331,6 +457,21 @@ export default function PortalAluno() {
         </div>
 
         <div className="flex items-center gap-2.5">
+          {/* MINI CRONÔMETRO POMODORO */}
+          <div className="hidden md:flex items-center gap-2 bg-slate-100 border border-slate-300 px-3 py-1 rounded-full text-xs font-bold">
+            <span className="text-slate-500">Foco:</span>
+            <span className="font-mono font-black text-slate-900">
+              {Math.floor(pomodoroSegundos / 60)}:{String(pomodoroSegundos % 60).padStart(2, '0')}
+            </span>
+            <button
+              onClick={() => setPomodoroRodando(!pomodoroRodando)}
+              className="p-1 rounded-full bg-slate-900 text-white hover:bg-amber-500 hover:text-slate-950 cursor-pointer"
+              title={pomodoroRodando ? 'Pausar Foco' : 'Iniciar 25m de Foco'}
+            >
+              {pomodoroRodando ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+            </button>
+          </div>
+
           <span className="hidden sm:inline-block bg-slate-900 text-amber-400 font-black text-[11px] px-3 py-1 rounded-full">
             {patente}
           </span>
@@ -354,10 +495,15 @@ export default function PortalAluno() {
       <div className="flex flex-1 max-w-[1440px] w-full mx-auto">
         <aside className={`${menuMobileAberto ? 'fixed inset-y-0 left-0 z-40 block pt-16' : 'hidden'} lg:block w-64 bg-white border-r-2 border-slate-200 shrink-0`}>
           <div className="p-4 space-y-1.5">
-            <p className="px-3 text-[10px] font-black tracking-widest text-slate-400 uppercase mb-2">Trilha de Estudos</p>
+            <p className="px-3 text-[10px] font-black tracking-widest text-slate-400 uppercase mb-2">Ecossistema de Estudo</p>
 
-            <button onClick={() => setSecaoAtiva('inicio')} className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-black cursor-pointer ${secaoAtiva === 'inicio' ? 'bg-amber-400 text-slate-950 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]' : 'text-slate-600 hover:bg-slate-100'}`}>
-              <Home className="w-4 h-4" /> Início
+            <button onClick={() => { setSecaoAtiva('inicio'); setMenuMobileAberto(false); }} className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-black cursor-pointer ${secaoAtiva === 'inicio' ? 'bg-amber-400 text-slate-950 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]' : 'text-slate-600 hover:bg-slate-100'}`}>
+              <Home className="w-4 h-4" /> Visão Geral
+            </button>
+
+            <button onClick={() => { setSecaoAtiva('plano'); setMenuMobileAberto(false); }} className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-sm font-black cursor-pointer ${secaoAtiva === 'plano' ? 'bg-amber-400 text-slate-950 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]' : 'text-slate-600 hover:bg-slate-100'}`}>
+              <span className="flex items-center gap-3"><Calendar className="w-4 h-4" /> Plano IA</span>
+              <span className="text-[9px] bg-slate-900 text-amber-400 font-black px-1.5 py-0.5 rounded-full">SOB DEMANDA</span>
             </button>
 
             <div>
@@ -376,13 +522,19 @@ export default function PortalAluno() {
               )}
             </div>
 
+            <button onClick={() => { setSecaoAtiva('erros'); setMenuMobileAberto(false); }} className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-sm font-black cursor-pointer ${secaoAtiva === 'erros' ? 'bg-amber-400 text-slate-950 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]' : 'text-slate-600 hover:bg-slate-100'}`}>
+              <span className="flex items-center gap-3"><RotateCcw className="w-4 h-4" /> Caderno de Erros</span>
+              {questoesParaRevisar.length > 0 && (
+                <span className="text-[10px] bg-red-500 text-white font-black px-2 py-0.5 rounded-full">{questoesParaRevisar.length}</span>
+              )}
+            </button>
+
             <button onClick={() => { setSecaoAtiva('simulados'); setMenuMobileAberto(false); }} className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-black cursor-pointer ${secaoAtiva === 'simulados' ? 'bg-amber-400 text-slate-950 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]' : 'text-slate-600 hover:bg-slate-100'}`}>
               <Clock className="w-4 h-4" /> Simulados
             </button>
 
             <button onClick={() => { setSecaoAtiva('redacao'); setEscrevendoRedacao(false); setAvaliacaoIaInstantanea(null); setMenuMobileAberto(false); }} className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-sm font-black cursor-pointer ${secaoAtiva === 'redacao' ? 'bg-amber-400 text-slate-950 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]' : 'text-slate-600 hover:bg-slate-100'}`}>
               <span className="flex items-center gap-3"><PenTool className="w-4 h-4" /> Redação + IA</span>
-              <span className="text-[9px] bg-lime-400 text-slate-950 font-black px-1.5 py-0.5 rounded-full">NOVO</span>
             </button>
 
             <button onClick={() => { setSecaoAtiva('biblioteca'); setMenuMobileAberto(false); }} className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-black cursor-pointer ${secaoAtiva === 'biblioteca' ? 'bg-amber-400 text-slate-950 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]' : 'text-slate-600 hover:bg-slate-100'}`}>
@@ -394,42 +546,245 @@ export default function PortalAluno() {
             </button>
 
             <button onClick={() => { setSecaoAtiva('desempenho'); setMenuMobileAberto(false); }} className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-black cursor-pointer ${secaoAtiva === 'desempenho' ? 'bg-amber-400 text-slate-950 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]' : 'text-slate-600 hover:bg-slate-100'}`}>
-              <BarChart2 className="w-4 h-4" /> Meu Desempenho
+              <BarChart2 className="w-4 h-4" /> Raio-X & Notas
             </button>
           </div>
         </aside>
 
         <main className="flex-1 p-6 lg:p-10">
+          {/* VISÃO GERAL CONECTADA */}
           {secaoAtiva === 'inicio' && (
             <div className="space-y-8 max-w-5xl animate-fade-up">
               <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950 rounded-3xl p-8 text-white border-2 border-slate-900 shadow-[6px_6px_0px_#F59E0B] flex flex-col md:flex-row items-center justify-between gap-6">
                 <div className="space-y-3 max-w-xl">
                   <span className="inline-flex items-center gap-1.5 bg-lime-400 text-slate-950 text-[10px] font-black tracking-widest uppercase px-3 py-1 rounded-full">
-                    <Sparkles className="w-3 h-3" /> PLATAFORMA DE REFORÇO EPP NEXO
+                    <Sparkles className="w-3 h-3" /> CENTRAL INTELIGENTE DO ALUNO
                   </span>
-                  <h1 className="text-2xl sm:text-4xl font-black">Bons estudos, {usuario.nome}!</h1>
+                  <h1 className="text-2xl sm:text-4xl font-black">Olá, {usuario.nome}!</h1>
                   <p className="text-sm text-slate-300">
-                    Resolva questões com ajuda do Tutor IA, envie sua redação para correção instantânea com notas por competência ou monte sua apostila em PDF.
+                    Seus acertos, erros e redações alimentam seu <strong>Plano de Estudos IA</strong>. Diga qual é a sua próxima prova ou meta e monte sua trilha agora.
                   </p>
                   <div className="flex flex-wrap gap-3 pt-1">
-                    <button onClick={() => setSecaoAtiva('conteudo')} className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm px-6 py-3 rounded-2xl border-2 border-slate-950 shadow-[3px_3px_0px_#ffffff] cursor-pointer">
-                      Resolver Exercícios <ArrowRight className="w-4 h-4" />
+                    <button onClick={() => setSecaoAtiva('plano')} className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm px-6 py-3 rounded-2xl border-2 border-slate-950 shadow-[3px_3px_0px_#ffffff] cursor-pointer">
+                      <Target className="w-4 h-4" /> Montar Meu Plano de Estudos
                     </button>
-                    <button onClick={() => setSecaoAtiva('redacao')} className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-black text-sm px-5 py-3 rounded-2xl border border-white/30 cursor-pointer">
-                      <Bot className="w-4 h-4 text-lime-400" /> Redação com IA
+                    <button onClick={() => setSecaoAtiva('conteudo')} className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-black text-sm px-5 py-3 rounded-2xl border border-white/30 cursor-pointer">
+                      Praticar Questões <ArrowRight className="w-4 h-4" />
                     </button>
+                  </div>
+                </div>
+
+                {/* RESUMO CONECTADO NO BANNER */}
+                <div className="bg-white/10 border border-white/20 p-5 rounded-2xl w-full md:w-64 space-y-3 backdrop-blur-sm">
+                  <p className="text-[11px] font-black uppercase text-amber-400">Seu Pulso de Estudos</p>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-300">Aproveitamento:</span>
+                    <span className="font-black text-lime-400">{taxaGeral}%</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-300">Questões para revisar:</span>
+                    <span className="font-black text-amber-300">{questoesParaRevisar.length}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-300">Plano semanal:</span>
+                    <span className="font-black text-cyan-300">{planoAtivo ? 'Ativo' : 'Pendente'}</span>
                   </div>
                 </div>
               </div>
 
+              {/* ATALHOS INTELIGENTES */}
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                {materias.map((mat) => (
-                  <button key={mat.nome} onClick={() => { setMateriaSelecionada(mat.nome); setSecaoAtiva('conteudo'); }} className={`h-36 rounded-3xl bg-gradient-to-br ${mat.cor} p-6 text-left text-white border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] hover:-translate-y-1 transition-all flex flex-col justify-end cursor-pointer`}>
-                    <span className="text-[11px] text-white/80 font-medium">{mat.subtitulo}</span>
-                    <h4 className="text-xl font-black uppercase mt-0.5">{mat.nome}</h4>
-                  </button>
-                ))}
+                {materias.map((mat) => {
+                  const stat = estatisticasPorMateria.find(s => s.nome === mat.nome);
+                  return (
+                    <button key={mat.nome} onClick={() => { setMateriaSelecionada(mat.nome); setSecaoAtiva('conteudo'); }} className={`h-40 rounded-3xl bg-gradient-to-br ${mat.cor} p-6 text-left text-white border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] hover:-translate-y-1 transition-all flex flex-col justify-between cursor-pointer`}>
+                      <div className="flex justify-between items-center w-full">
+                        <span className="text-[10px] font-black bg-black/30 px-2.5 py-1 rounded-full">
+                          {stat?.taxa !== null ? `${stat?.taxa}% acerto` : 'Novo'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-white/80 font-medium">{mat.subtitulo}</span>
+                        <h4 className="text-xl font-black uppercase mt-0.5">{mat.nome}</h4>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
+            </div>
+          )}
+
+          {/* PLANO DE ESTUDOS GERADO PELA DEMANDA PESSOAL */}
+          {secaoAtiva === 'plano' && (
+            <div className="space-y-6 max-w-4xl animate-fade-up">
+              <div className="bg-white p-6 sm:p-8 rounded-3xl border-2 border-slate-900 shadow-[6px_6px_0px_#F59E0B] space-y-5">
+                <div className="flex flex-wrap justify-between items-start gap-3">
+                  <div>
+                    <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-3 py-1 rounded-full border border-slate-900 uppercase">
+                      Mentor IA Conectado ao seu Desempenho
+                    </span>
+                    <h1 className="text-2xl font-black mt-2">Plano de Estudos Sob Demanda</h1>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Escreva sua meta pessoal abaixo. A IA cruza seu objetivo com as matérias que você mais errou e suas notas de redação.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-black uppercase mb-1">Qual é a sua demanda ou meta agora?</label>
+                    <input
+                      type="text"
+                      value={demandaObjetivo}
+                      onChange={(e) => setDemandaObjetivo(e.target.value)}
+                      placeholder="Ex: Tenho prova de Matemática e Ciências semana que vem e quero melhorar minha redação..."
+                      className="w-full p-3.5 border-2 border-slate-300 focus:border-slate-900 rounded-2xl text-sm outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-black uppercase mb-1">Tempo livre por dia</label>
+                    <select
+                      value={horasEstudo}
+                      onChange={(e) => setHorasEstudo(e.target.value)}
+                      className="w-full p-3.5 border-2 border-slate-300 rounded-2xl text-sm font-bold bg-white"
+                    >
+                      <option>30 minutos</option>
+                      <option>1 hora</option>
+                      <option>1 hora e 30 min</option>
+                      <option>2 horas ou mais</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* SUGESTÕES RÁPIDAS DE DEMANDA */}
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    'Preparação para prova bimestral',
+                    'Reforçar matérias que estou errando mais',
+                    'Foco total em Matemática e Interpretação',
+                    'Alcançar nota 900+ na Redação'
+                  ].map((sug) => (
+                    <button
+                      key={sug}
+                      type="button"
+                      onClick={() => setDemandaObjetivo(sug)}
+                      className="text-[11px] font-bold bg-slate-100 hover:bg-amber-100 text-slate-700 px-3 py-1.5 rounded-full border border-slate-300 cursor-pointer"
+                    >
+                      + {sug}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={gerarPlanoEstudosIA}
+                  disabled={gerandoPlano || !demandaObjetivo.trim()}
+                  className="bg-slate-950 hover:bg-slate-800 text-amber-400 font-black text-sm px-7 py-4 rounded-2xl border-2 border-slate-900 shadow-[4px_4px_0px_#F59E0B] flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <Sparkles className={`w-4 h-4 ${gerandoPlano ? 'animate-spin' : ''}`} />
+                  {gerandoPlano ? 'Cruzando seu histórico e montando roteiro...' : 'Gerar Meu Plano Semanal Agora'}
+                </button>
+              </div>
+
+              {planoAtivo && (
+                <div className="space-y-4 animate-pop-in">
+                  <div className="bg-slate-900 text-white p-5 rounded-2xl border-2 border-slate-950">
+                    <p className="text-[11px] font-black text-lime-400 uppercase mb-1">Diagnóstico da IA para você:</p>
+                    <p className="text-sm text-slate-200 leading-relaxed">{planoAtivo.diagnostico}</p>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {planoAtivo.dias?.map((d: any, idx: number) => {
+                      const feito = diasConcluidos.includes(idx);
+                      return (
+                        <div key={idx} className={`p-5 rounded-3xl border-2 transition-all flex flex-col justify-between gap-4 ${feito ? 'bg-lime-50 border-lime-600' : 'bg-white border-slate-200'}`}>
+                          <div>
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-xs font-black bg-amber-400 text-slate-950 px-3 py-1 rounded-full border border-slate-900">
+                                {d.dia} • {d.duracao}
+                              </span>
+                              <button
+                                onClick={() => concluirDiaPlano(idx)}
+                                className={`text-xs font-black px-3 py-1 rounded-full border cursor-pointer ${
+                                  feito ? 'bg-lime-500 text-white border-lime-700' : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-lime-100'
+                                }`}
+                              >
+                                {feito ? '✓ Concluído (+15 XP)' : 'Marcar feito'}
+                              </button>
+                            </div>
+                            <h3 className="font-black text-base text-slate-900">{d.foco}</h3>
+                            <p className="text-xs text-slate-600 mt-1 leading-relaxed">{d.atividade}</p>
+                          </div>
+
+                          <button
+                            onClick={() => executarAcaoDoPlano(d)}
+                            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black text-xs py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            Ir para atividade agora <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* CADERNO DE ERROS (REVISÃO INTELIGENTE) */}
+          {secaoAtiva === 'erros' && (
+            <div className="space-y-6 max-w-4xl animate-fade-up">
+              <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#ef4444] flex flex-wrap justify-between items-center gap-4">
+                <div>
+                  <h1 className="text-2xl font-black flex items-center gap-2">
+                    <RotateCcw className="w-6 h-6 text-red-500" /> Caderno de Erros & Superação
+                  </h1>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Aqui ficam reunidas as questões que você errou. Refaça com calma e ganhe <strong>+25 XP</strong> por superação!
+                  </p>
+                </div>
+                <span className="bg-red-100 text-red-800 font-black text-xs px-3.5 py-2 rounded-xl border border-red-300">
+                  {questoesParaRevisar.length} para revisar
+                </span>
+              </div>
+
+              {questoesParaRevisar.length === 0 ? (
+                <div className="bg-white p-8 rounded-3xl border-2 border-slate-200 text-center space-y-2">
+                  <CheckCircle2 className="w-10 h-10 text-lime-500 mx-auto" />
+                  <h3 className="font-black text-lg">Nenhum erro pendente!</h3>
+                  <p className="text-xs text-slate-500">Continue resolvendo questões nas disciplinas ou simulados.</p>
+                </div>
+              ) : (
+                questoesParaRevisar.map((q, idx) => (
+                  <div key={q.id} className="bg-white p-6 rounded-3xl border-2 border-red-200 space-y-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-black text-red-600 uppercase">Revisão 0{idx + 1} • {q.disciplina} ({q.titulo})</span>
+                    </div>
+                    <p className="text-sm font-bold text-slate-800">{q.enunciado}</p>
+                    <div className="grid sm:grid-cols-2 gap-2.5">
+                      {['A', 'B', 'C', 'D'].map((letra) => (
+                        <button
+                          key={letra}
+                          onClick={() => responderQuestao(q, letra, true)}
+                          className={`p-3 rounded-2xl border-2 text-left text-xs font-bold cursor-pointer ${
+                            respostasAluno[q.id] === letra
+                              ? letra === q.correta
+                                ? 'bg-lime-400 border-slate-900 text-slate-950'
+                                : 'bg-red-100 border-red-400 text-red-900'
+                              : 'border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          {letra}) {q[`alternativa_${letra.toLowerCase()}`]}
+                        </button>
+                      ))}
+                    </div>
+                    {respostasAluno[q.id] === q.correta && (
+                      <p className="text-xs font-black text-lime-800 bg-lime-100 p-3 rounded-xl">
+                        Excelente! Você superou esse erro (+25 XP). {q.resolucao_comentada}
+                      </p>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           )}
 
@@ -439,7 +794,7 @@ export default function PortalAluno() {
               <div className="flex flex-wrap justify-between items-center gap-3 bg-white p-5 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a]">
                 <div>
                   <h1 className="text-2xl font-black">{materiaSelecionada} • {usuario.serie}</h1>
-                  <p className="text-xs text-slate-500">Ganhe +20 XP por acerto, peça dicas ao Tutor IA ou baixe sua lista em PDF</p>
+                  <p className="text-xs text-slate-500">Cada resposta alimenta automaticamente o seu Plano de Estudos IA</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {questoesDaMateria.length > 0 && (
@@ -562,7 +917,7 @@ export default function PortalAluno() {
               {resultadoSimulado && (
                 <div className="bg-lime-400 border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] p-6 rounded-3xl text-slate-950 space-y-1 animate-pop-in">
                   <h2 className="text-xl font-black">Simulado Finalizado!</h2>
-                  <p className="text-sm font-bold">Você acertou {resultadoSimulado.acertos} de {resultadoSimulado.total} questões.</p>
+                  <p className="text-sm font-bold">Você acertou {resultadoSimulado.acertos} de {resultadoSimulado.total} questões (+{resultadoSimulado.acertos * 15} XP).</p>
                 </div>
               )}
 
@@ -588,7 +943,7 @@ export default function PortalAluno() {
                     : atividades
                   ).map((q, idx) => (
                     <div key={q.id} className="bg-white p-6 rounded-3xl border-2 border-slate-200 space-y-3">
-                      <p className="text-xs font-black text-slate-400">QUESTÃO 0{idx + 1}</p>
+                      <p className="text-xs font-black text-slate-400">QUESTÃO 0{idx + 1} • {q.disciplina}</p>
                       <p className="text-sm font-bold">{q.enunciado}</p>
                       <div className="grid sm:grid-cols-2 gap-2.5">
                         {['A', 'B', 'C', 'D'].map((letra) => (
@@ -741,7 +1096,7 @@ export default function PortalAluno() {
               <div className="bg-slate-950 text-white p-6 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#F59E0B] flex items-center justify-between">
                 <div>
                   <h1 className="text-2xl font-black text-amber-400 flex items-center gap-2"><Trophy className="w-6 h-6" /> Ranking Geral EPP Nexo</h1>
-                  <p className="text-xs text-slate-300 mt-1">Os estudantes que mais acumulam XP resolvendo questões e redações.</p>
+                  <p className="text-xs text-slate-300 mt-1">Os estudantes que mais acumulam XP resolvendo questões, planos e redações.</p>
                 </div>
                 <span className="bg-amber-500 text-slate-950 font-black text-xs px-3.5 py-1.5 rounded-full">TOP 10</span>
               </div>
@@ -792,23 +1147,61 @@ export default function PortalAluno() {
             </div>
           )}
 
-          {/* MEU DESEMPENHO */}
+          {/* RAIO-X & DESEMPENHO POR DISCIPLINA */}
           {secaoAtiva === 'desempenho' && (
             <div className="space-y-6 max-w-4xl animate-fade-up">
-              <h1 className="text-2xl font-black">Meu Desempenho Geral</h1>
-              <div className="grid sm:grid-cols-3 gap-5">
-                <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#F59E0B]">
-                  <p className="text-xs text-slate-500 font-black uppercase">Total de XP Acumulado</p>
-                  <p className="text-3xl font-black text-amber-500 mt-2">{usuario.xp || 0} XP</p>
-                  <p className="text-xs font-bold text-slate-400 mt-1">Patente: {patente}</p>
+              <div className="flex flex-wrap justify-between items-center gap-3">
+                <h1 className="text-2xl font-black">Raio-X de Desempenho Real</h1>
+                <button onClick={() => setSecaoAtiva('plano')} className="bg-amber-500 text-slate-950 font-black text-xs px-4 py-2.5 rounded-xl border-2 border-slate-900 cursor-pointer">
+                  Gerar Plano p/ Melhorar Pontos Fracos
+                </button>
+              </div>
+
+              <div className="grid sm:grid-cols-4 gap-4">
+                <div className="bg-white p-5 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#F59E0B]">
+                  <p className="text-[11px] text-slate-500 font-black uppercase">XP Acumulado</p>
+                  <p className="text-3xl font-black text-amber-500 mt-1">{usuario.xp || 0}</p>
+                  <p className="text-[11px] font-bold text-slate-400 mt-1">{patente}</p>
                 </div>
-                <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#84cc16]">
-                  <p className="text-xs text-slate-500 font-black uppercase">Acertos nesta Sessão</p>
-                  <p className="text-3xl font-black text-lime-600 mt-2">{acertosSessao}</p>
+                <div className="bg-white p-5 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#84cc16]">
+                  <p className="text-[11px] text-slate-500 font-black uppercase">Taxa de Acerto</p>
+                  <p className="text-3xl font-black text-lime-600 mt-1">{taxaGeral}%</p>
+                  <p className="text-[11px] font-bold text-slate-400 mt-1">{totalAcertos} de {totalRespondidas}</p>
                 </div>
-                <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a]">
-                  <p className="text-xs text-slate-500 font-black uppercase">Redações Enviadas</p>
-                  <p className="text-3xl font-black text-slate-900 mt-2">{minhasRedacoes.length}</p>
+                <div className="bg-white p-5 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#ef4444]">
+                  <p className="text-[11px] text-slate-500 font-black uppercase">Caderno de Erros</p>
+                  <p className="text-3xl font-black text-red-500 mt-1">{questoesParaRevisar.length}</p>
+                  <p className="text-[11px] font-bold text-slate-400 mt-1">Questões p/ revisar</p>
+                </div>
+                <div className="bg-white p-5 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a]">
+                  <p className="text-[11px] text-slate-500 font-black uppercase">Redações</p>
+                  <p className="text-3xl font-black text-slate-900 mt-1">{minhasRedacoes.length}</p>
+                  <p className="text-[11px] font-bold text-slate-400 mt-1">Textos enviados</p>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 space-y-4">
+                <h2 className="font-black text-lg">Aproveitamento por Disciplina</h2>
+                <div className="space-y-4">
+                  {estatisticasPorMateria.map((st) => (
+                    <div key={st.nome} className="space-y-1.5">
+                      <div className="flex justify-between items-center text-xs font-black">
+                        <span>{st.nome}</span>
+                        <span className="flex items-center gap-2">
+                          {st.taxa !== null && st.taxa < 60 && (
+                            <span className="text-red-600 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Atenção</span>
+                          )}
+                          <span>{st.taxa !== null ? `${st.taxa}% (${st.acertos}/${st.total})` : 'Sem questões respondidas'}</span>
+                        </span>
+                      </div>
+                      <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                        <div
+                          className={`h-full transition-all ${st.taxa !== null && st.taxa < 60 ? 'bg-red-500' : 'bg-lime-500'}`}
+                          style={{ width: `${st.taxa || 0}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
