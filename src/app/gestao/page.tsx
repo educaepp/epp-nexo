@@ -133,10 +133,27 @@ export default function PainelGestao() {
           pais,
           banca
         }));
-        await supabase.from('atividades').insert(registros);
+        const { error: errIns } = await supabase.from('atividades').insert(registros);
+        if (errIns) {
+          alert(`Erro ao publicar questões: ${errIns.message}`);
+          return;
+        }
+        const alunosAlvo = serieQ === 'Todas as Séries'
+          ? alunos.filter(a => a.perfil === 'aluno')
+          : alunos.filter(a => a.perfil === 'aluno' && a.serie === serieQ);
+        if (alunosAlvo.length > 0) {
+          await supabase.from('notificacoes').insert(
+            alunosAlvo.map(al => ({
+              destinatario_email: al.email,
+              titulo: `Novas Questões (${banca})`,
+              mensagem: `${registros.length} novas questões de ${disciplinaQ} já estão disponíveis no seu Banco de Questões!`,
+              tipo: 'questao'
+            }))
+          );
+        }
         setAssuntoQ('');
         carregarTudo();
-        alert(`${registros.length} questões internacionais publicadas no banco!`);
+        alert(`${registros.length} questões enviadas diretamente para os alunos!`);
       }
     } finally {
       setGerandoQ(false);
@@ -173,15 +190,35 @@ export default function PainelGestao() {
         };
       });
 
-      const { error } = await supabase.from('atividades').insert(normalizado);
+      const comSerieDestino = normalizado.map((item: any) => ({
+        ...item,
+        serie: serieQ === 'Todas as Séries' ? 'Todas as Séries' : item.serie
+      }));
+
+      const { error } = await supabase.from('atividades').insert(comSerieDestino);
       if (error) {
         alert(`Erro ao salvar no Supabase: ${error.message}`);
         return;
       }
 
+      const alunosAlvo = serieQ === 'Todas as Séries'
+        ? alunos.filter(a => a.perfil === 'aluno')
+        : alunos.filter(a => a.perfil === 'aluno' && a.serie === serieQ);
+
+      if (alunosAlvo.length > 0) {
+        await supabase.from('notificacoes').insert(
+          alunosAlvo.map(al => ({
+            destinatario_email: al.email,
+            titulo: 'Novo Pacote de Questões Disponível!',
+            mensagem: `${comSerieDestino.length} questões acabaram de chegar no seu Banco Mundial & Caderno PDF.`,
+            tipo: 'questao'
+          }))
+        );
+      }
+
       setJsonLote('');
       carregarTudo();
-      alert(`${normalizado.length} questões importadas e já disponíveis para os alunos!`);
+      alert(`${comSerieDestino.length} questões enviadas diretamente para os alunos!`);
     } catch (err: any) {
       alert(`JSON inválido: ${err.message}`);
     }
@@ -323,7 +360,7 @@ export default function PainelGestao() {
               <h2 className="text-lg font-black flex items-center gap-2"><Sparkles className="w-5 h-5 text-amber-500" /> Gerador de Vestibulares do Mundo (IA)</h2>
               <div className="grid sm:grid-cols-2 gap-3">
                 <select value={serieQ} onChange={(e) => setSerieQ(e.target.value)} className="p-3 border-2 border-slate-200 rounded-xl text-xs font-bold">
-                  <option>6º Ano</option><option>7º Ano</option><option>8º Ano</option><option>9º Ano</option>
+                  <option value="Todas as Séries">Todas as Séries (6º ao 9º Ano)</option><option>6º Ano</option><option>7º Ano</option><option>8º Ano</option><option>9º Ano</option>
                 </select>
                 <select value={disciplinaQ} onChange={(e) => setDisciplinaQ(e.target.value)} className="p-3 border-2 border-slate-200 rounded-xl text-xs font-bold">
                   <option>Matemática</option><option>Linguagens</option><option>Ciências</option><option>Humanas</option>
@@ -505,7 +542,7 @@ export default function PainelGestao() {
               <input type="text" required value={novoNome} onChange={(e) => setNovoNome(e.target.value)} placeholder="Nome do aluno" className="p-3 border rounded-xl text-xs" />
               <input type="email" required value={novoEmail} onChange={(e) => setNovoEmail(e.target.value)} placeholder="E-mail" className="p-3 border rounded-xl text-xs" />
               <select value={novaSerie} onChange={(e) => setNovaSerie(e.target.value)} className="p-3 border rounded-xl text-xs font-bold">
-                <option>6º Ano</option><option>7º Ano</option><option>8º Ano</option><option>9º Ano</option>
+                <option value="Todas as Séries">Todas as Séries (6º ao 9º Ano)</option><option>6º Ano</option><option>7º Ano</option><option>8º Ano</option><option>9º Ano</option>
               </select>
               <button type="submit" className="bg-amber-500 font-black text-xs rounded-xl border-2 border-slate-900 cursor-pointer">Cadastrar Aluno</button>
             </form>
@@ -524,5 +561,6 @@ export default function PainelGestao() {
     </div>
   );
 }
+
 
 

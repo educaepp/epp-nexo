@@ -129,7 +129,7 @@ export default function PortalAluno() {
 
   const carregarDados = async (user: any) => {
     const [ativs, sims, tema, reds, libs, rank, hist, planos, notifs, duvs] = await Promise.all([
-      supabase.from('atividades').select('*').eq('serie', user.serie),
+      supabase.from('atividades').select('*').in('serie', [user.serie, 'Todas as Séries', '6º ao 9º Ano']),
       supabase.from('simulados').select('*').eq('serie_alvo', user.serie).eq('ativo', true),
       supabase.from('temas_redacao').select('*').eq('ativo', true).single(),
       supabase.from('redacoes_enviadas').select('*').eq('aluno_email', user.email).order('enviado_em', { ascending: false }),
@@ -1088,7 +1088,7 @@ export default function PortalAluno() {
                 <div className="flex flex-wrap justify-between items-center gap-3">
                   <div>
                     <h1 className="text-2xl font-black flex items-center gap-2">
-                      <Globe className="w-6 h-6 text-amber-500" /> Banco de Questões & Caderno PDF
+                      <Globe className="w-6 h-6 text-amber-500" /> Banco de Questões & Caderno PDF <button onClick={() => carregarDados(usuario)} className="ml-2 text-[11px] bg-amber-100 hover:bg-amber-200 text-amber-900 px-2.5 py-1 rounded-full border border-amber-400 cursor-pointer">Atualizar</button>
                     </h1>
                     <p className="text-xs text-slate-500 mt-0.5">
                       Responda online para ganhar XP ou marque as questões que desejar para montar um <strong>Caderno de Questões em PDF</strong>.
@@ -1544,3 +1544,4 @@ export default function PortalAluno() {
     </div>
   );
 }
+
