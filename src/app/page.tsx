@@ -33,7 +33,7 @@ export default function HomePage() {
 
         <div className="flex items-center gap-3">
           <a
-            href="https://vercel.com/sistema-epp/sistema-epp-rk66"
+            href="https://sistema-epp-rk66.vercel.app/"
             target="_blank"
             rel="noopener noreferrer"
             className="hidden sm:inline-flex items-center gap-1.5 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 font-black text-xs px-4 py-2.5 rounded-full border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]"
@@ -91,7 +91,7 @@ export default function HomePage() {
               </button>
 
               <a
-                href="https://vercel.com/sistema-epp/sistema-epp-rk66"
+                href="https://sistema-epp-rk66.vercel.app/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-sm px-5 py-4 rounded-2xl border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] hover:shadow-[6px_6px_0px_#0f172a] hover:-translate-y-0.5"
@@ -174,3 +174,4 @@ export default function HomePage() {
     </div>
   );
 }
+

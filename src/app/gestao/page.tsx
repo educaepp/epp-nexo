@@ -322,7 +322,7 @@ export default function PainelGestao() {
           </nav>
 
           <a
-            href="https://vercel.com/sistema-epp/sistema-epp-rk66"
+            href="https://sistema-epp-rk66.vercel.app/"
             target="_blank"
             rel="noopener noreferrer"
             className="mt-6 w-full flex items-center justify-center gap-2 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-xs px-4 py-3 rounded-xl border-2 border-white"
@@ -717,3 +717,4 @@ export default function PainelGestao() {
     </div>
   );
 }
+
