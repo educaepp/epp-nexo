@@ -7,7 +7,7 @@ import {
   Home, Layers, BookOpen, Clock, Flame, LogOut, Menu, X,
   Printer, CheckSquare, Square, Sparkles, Trophy, 
   HelpCircle, Calendar, RotateCcw, Play, Pause, 
-  Bell, MessageSquare, Camera, Volume2, Upload, Send, Zap,
+  Bell, MessageSquare, Camera, Mic, Volume2, Upload, Send, Zap,
   Globe, Award, FileCheck2, ArrowRight, BarChart2
 } from 'lucide-react';
 
@@ -36,7 +36,15 @@ export default function PortalAluno() {
   const [duvidas, setDuvidas] = useState<any[]>([]);
   const [novaDuvidaDisc, setNovaDuvidaDisc] = useState('Matemática');
   const [novaDuvidaTexto, setNovaDuvidaTexto] = useState('');
+  const [duvidaDisciplina, setDuvidaDisciplina] = useState('Matemática');
+  const [duvidaTexto, setDuvidaTexto] = useState('');
+  const [duvidaFoto, setDuvidaFoto] = useState<File | null>(null);
+  const [duvidaFotoPreview, setDuvidaFotoPreview] = useState<string | null>(null);
+  const [duvidaAudioBlob, setDuvidaAudioBlob] = useState<Blob | null>(null);
+  const [duvidaAudioUrlLocal, setDuvidaAudioUrlLocal] = useState<string | null>(null);
+  const [gravandoDuvidaAudio, setGravandoDuvidaAudio] = useState(false);
   const [enviandoDuvida, setEnviandoDuvida] = useState(false);
+  const mediaRecorderDuvidaRef = useRef<MediaRecorder | null>(null);
 
   // Relógio Pomodoro Completo
   const [pomodoroModalAberto, setPomodoroModalAberto] = useState(false);
@@ -1001,7 +1009,7 @@ export default function PortalAluno() {
               { id: 'plano', label: 'Plano IA Sob Demanda', icon: Calendar, badge: 'IA' },
               { id: 'conteudo', label: 'Banco Mundial & PDF', icon: Layers, badge: 'PDF' },
               { id: 'erros', label: 'Caderno de Erros', icon: RotateCcw, badge: questoesParaRevisar.length || null },
-              { id: 'redacao', label: 'Redação por Foto', icon: Camera, badge: '3 DIAS / IA' },
+              { id: 'redacao', label: 'Redação por Foto', icon: Camera, Mic, Square, badge: '3 DIAS / IA' },
               { id: 'duvidas', label: 'Tirar Dúvidas', icon: MessageSquare },
               { id: 'simulados', label: 'Simulados', icon: Clock },
               { id: 'biblioteca', label: 'Biblioteca PDF', icon: BookOpen },
@@ -1413,44 +1421,269 @@ export default function PortalAluno() {
           {/* CENTRAL DE DÚVIDAS */}
           {secaoAtiva === 'duvidas' && (
             <div className="space-y-6 max-w-4xl animate-fade-up">
-              <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#0f172a] space-y-4">
-                <h1 className="text-2xl font-black flex items-center gap-2"><MessageSquare className="w-6 h-6 text-amber-500" /> Central de Dúvidas EPP</h1>
-                <p className="text-xs text-slate-500">Travou em algum assunto ou exercício? Envie sua dúvida diretamente para os professores do reforço.</p>
-
-                <form onSubmit={enviarDuvida} className="space-y-3">
-                  <div className="flex flex-wrap gap-3">
-                    <select value={novaDuvidaDisc} onChange={(e) => setNovaDuvidaDisc(e.target.value)} className="p-3 border-2 border-slate-300 rounded-2xl text-xs font-black bg-white">
-                      {materias.map(m => <option key={m.nome}>{m.nome}</option>)}
-                    </select>
-                    <input
-                      type="text"
-                      required
-                      value={novaDuvidaTexto}
-                      onChange={(e) => setNovaDuvidaTexto(e.target.value)}
-                      placeholder="Escreva sua dúvida com detalhes..."
-                      className="flex-1 p-3 border-2 border-slate-300 focus:border-slate-900 rounded-2xl text-xs outline-none"
-                    />
-                    <button type="submit" disabled={enviandoDuvida} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs px-5 py-3 rounded-2xl border-2 border-slate-900 flex items-center gap-1.5 cursor-pointer">
-                      <Send className="w-3.5 h-3.5" /> Enviar Dúvida
-                    </button>
+              <div className="bg-white p-7 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#0f172a] space-y-5">
+                <div className="flex flex-wrap justify-between items-center gap-2">
+                  <div>
+                    <h1 className="text-2xl font-black flex items-center gap-2">
+                      <MessageSquare className="w-6 h-6 text-amber-500" /> Central de Dúvidas Multimídia EPP
+                    </h1>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Travou em algum assunto ou exercício? Escreva, mande uma foto do seu caderno ou grave um áudio para os professores!
+                    </p>
                   </div>
-                </form>
+                  <span className="text-[11px] font-black bg-amber-100 text-amber-900 border border-amber-400 px-3 py-1 rounded-full">
+                    {duvidas.length} dúvida(s) registrada(s)
+                  </span>
+                </div>
+
+                {/* SELETOR DE MATERIA E TEXTO */}
+                <div className="grid sm:grid-cols-4 gap-3">
+                  <select
+                    value={duvidaDisciplina}
+                    onChange={e => setDuvidaDisciplina(e.target.value)}
+                    className="border-2 border-slate-300 focus:border-slate-900 p-3.5 rounded-2xl font-bold text-sm bg-white"
+                  >
+                    <option>Matemática</option>
+                    <option>Linguagens</option>
+                    <option>Ciências</option>
+                    <option>Humanas</option>
+                    <option>Redação</option>
+                  </select>
+                  <textarea
+                    rows={2}
+                    placeholder="Descreva sua dúvida ou explique o que você tentou fazer na questão..."
+                    value={duvidaTexto}
+                    onChange={e => setDuvidaTexto(e.target.value)}
+                    className="sm:col-span-3 border-2 border-slate-300 focus:border-slate-900 p-3.5 rounded-2xl text-sm resize-none"
+                  />
+                </div>
+
+                {/* ANEXOS: FOTO DO CADERNO E GRAVADOR DE AUDIO */}
+                <div className="grid sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                  {/* UPLOAD DE FOTO */}
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-black uppercase text-slate-600 flex items-center gap-1.5">
+                      <Camera className="w-4 h-4 text-amber-600" /> Foto do Caderno ou Questão (Opcional)
+                    </label>
+                    <label className="flex items-center justify-center gap-2 border-2 border-dashed border-slate-300 hover:border-amber-500 bg-white p-3 rounded-xl cursor-pointer text-xs font-bold text-slate-700">
+                      <Upload className="w-4 h-4 text-amber-500" />
+                      {duvidaFoto ? duvidaFoto.name : 'Anexar Imagem / Tirar Foto'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={e => {
+                          const file = e.target.files?.[0] || null;
+                          setDuvidaFoto(file);
+                          setDuvidaFotoPreview(file ? URL.createObjectURL(file) : null);
+                        }}
+                      />
+                    </label>
+                    {duvidaFotoPreview && (
+                      <div className="relative inline-block mt-1">
+                        <img src={duvidaFotoPreview} alt="Prévia da dúvida" className="h-24 rounded-xl border border-slate-300 object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => { setDuvidaFoto(null); setDuvidaFotoPreview(null); }}
+                          className="mt-1 block text-[11px] font-bold text-red-600 hover:underline cursor-pointer"
+                        >
+                          Remover foto
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* GRAVADOR DE AUDIO */}
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-black uppercase text-slate-600 flex items-center gap-1.5">
+                      <Mic className="w-4 h-4 text-red-500" /> Explicação em Áudio (Opcional)
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {!gravandoDuvidaAudio ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                              const recorder = new MediaRecorder(stream);
+                              const chunks: BlobPart[] = [];
+                              recorder.ondataavailable = ev => { if (ev.data.size > 0) chunks.push(ev.data); };
+                              recorder.onstop = () => {
+                                const blob = new Blob(chunks, { type: 'audio/webm' });
+                                setDuvidaAudioBlob(blob);
+                                setDuvidaAudioUrlLocal(URL.createObjectURL(blob));
+                                stream.getTracks().forEach(t => t.stop());
+                              };
+                              mediaRecorderDuvidaRef.current = recorder;
+                              recorder.start();
+                              setGravandoDuvidaAudio(true);
+                            } catch {
+                              alert('Não foi possível acessar o microfone. Verifique as permissões do navegador.');
+                            }
+                          }}
+                          className="bg-white hover:bg-red-50 border-2 border-slate-300 hover:border-red-400 text-slate-800 font-bold text-xs px-3.5 py-2.5 rounded-xl flex items-center gap-2 cursor-pointer"
+                        >
+                          <Mic className="w-4 h-4 text-red-500" /> Gravar Áudio
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            mediaRecorderDuvidaRef.current?.stop();
+                            setGravandoDuvidaAudio(false);
+                          }}
+                          className="bg-red-600 text-white font-black text-xs px-3.5 py-2.5 rounded-xl flex items-center gap-2 animate-pulse cursor-pointer"
+                        >
+                          <Square className="w-3.5 h-3.5" /> Parar Gravação
+                        </button>
+                      )}
+
+                      <label className="bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 font-bold text-xs px-3 py-2.5 rounded-xl cursor-pointer">
+                        Enviar Arquivo de Áudio
+                        <input
+                          type="file"
+                          accept="audio/*"
+                          className="hidden"
+                          onChange={e => {
+                            const f = e.target.files?.[0];
+                            if (f) {
+                              setDuvidaAudioBlob(f);
+                              setDuvidaAudioUrlLocal(URL.createObjectURL(f));
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                    {duvidaAudioUrlLocal && (
+                      <div className="pt-1 space-y-1">
+                        <audio controls src={duvidaAudioUrlLocal} className="w-full h-9" />
+                        <button
+                          type="button"
+                          onClick={() => { setDuvidaAudioBlob(null); setDuvidaAudioUrlLocal(null); }}
+                          className="text-[11px] font-bold text-red-600 hover:underline cursor-pointer"
+                        >
+                          Excluir áudio
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* BOTAO DE ENVIO */}
+                <div className="flex justify-end">
+                  <button
+                    disabled={enviandoDuvida}
+                    onClick={async () => {
+                      if (!duvidaTexto.trim() && !duvidaFoto && !duvidaAudioBlob) {
+                        alert('Escreva sua dúvida, anexe uma foto ou grave um áudio antes de enviar.');
+                        return;
+                      }
+                      setEnviandoDuvida(true);
+                      try {
+                        let fotoUrlFinal: string | null = null;
+                        let audioUrlFinal: string | null = null;
+
+                        if (duvidaFoto) {
+                          const ext = duvidaFoto.name.split('.').pop() || 'jpg';
+                          const pathFoto = `duvidas/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+                          const { error: errUpFoto } = await supabase.storage.from('redacoes-fotos').upload(pathFoto, duvidaFoto);
+                          if (!errUpFoto) {
+                            const { data: pubFoto } = supabase.storage.from('redacoes-fotos').getPublicUrl(pathFoto);
+                            fotoUrlFinal = pubFoto.publicUrl;
+                          }
+                        }
+
+                        if (duvidaAudioBlob) {
+                          const pathAudio = `duvidas/${Date.now()}_${Math.random().toString(36).slice(2)}.webm`;
+                          const { error: errUpAudio } = await supabase.storage.from('correcoes-audios').upload(pathAudio, duvidaAudioBlob);
+                          if (!errUpAudio) {
+                            const { data: pubAudio } = supabase.storage.from('correcoes-audios').getPublicUrl(pathAudio);
+                            audioUrlFinal = pubAudio.publicUrl;
+                          }
+                        }
+
+                        const { error: errInsDuv } = await supabase.from('duvidas_alunos').insert([{
+                          aluno_email: usuario.email,
+                          aluno_nome: usuario.nome,
+                          serie: usuario.serie,
+                          disciplina: duvidaDisciplina,
+                          pergunta: duvidaTexto.trim() || '(Dúvida enviada por mídia)',
+                          foto_url: fotoUrlFinal,
+                          audio_aluno_url: audioUrlFinal,
+                          status: 'pendente'
+                        }]);
+
+                        if (errInsDuv) {
+                          alert(`Erro ao enviar dúvida: ${errInsDuv.message}`);
+                        } else {
+                          setDuvidaTexto('');
+                          setDuvidaFoto(null);
+                          setDuvidaFotoPreview(null);
+                          setDuvidaAudioBlob(null);
+                          setDuvidaAudioUrlLocal(null);
+                          ganharXP(10);
+                          carregarDados(usuario);
+                          alert('Dúvida enviada com sucesso! (+10 XP) Assim que o professor responder, você será notificado.');
+                        }
+                      } finally {
+                        setEnviandoDuvida(false);
+                      }
+                    }}
+                    className="bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-slate-950 font-black px-6 py-3.5 rounded-2xl border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex items-center gap-2 cursor-pointer"
+                  >
+                    <Send className="w-4 h-4" />
+                    {enviandoDuvida ? 'Enviando anexos...' : 'Enviar Dúvida para Professores'}
+                  </button>
+                </div>
               </div>
 
-              <div className="space-y-3">
-                {duvidas.map((d) => (
-                  <div key={d.id} className="bg-white p-5 rounded-3xl border-2 border-slate-200 space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-black text-amber-600 uppercase">{d.disciplina} • {new Date(d.criado_em).toLocaleDateString('pt-BR')}</span>
-                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${d.respondida ? 'bg-lime-400 text-slate-950' : 'bg-slate-100 text-slate-600'}`}>
-                        {d.respondida ? 'Respondida pelo Professor' : 'Aguardando resposta'}
+              {/* HISTORICO DE DUVIDAS DO ALUNO */}
+              <div className="space-y-4">
+                {duvidas.map(d => (
+                  <div key={d.id} className="bg-white p-6 rounded-3xl border-2 border-slate-200 space-y-3">
+                    <div className="flex flex-wrap justify-between items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black uppercase bg-slate-900 text-amber-400 px-3 py-1 rounded-full">
+                          {d.disciplina}
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          {d.criado_em ? new Date(d.criado_em).toLocaleDateString('pt-BR') : ''}
+                        </span>
+                      </div>
+                      <span className={`text-xs font-bold px-3 py-1 rounded-full ${d.status === 'respondida' ? 'bg-lime-100 text-lime-800' : 'bg-amber-100 text-amber-800'}`}>
+                        {d.status === 'respondida' ? 'Respondida pelo Professor' : 'Aguardando Resposta'}
                       </span>
                     </div>
-                    <p className="text-sm font-bold text-slate-900">Você perguntou: "{d.pergunta}"</p>
-                    {d.resposta_professor && (
-                      <div className="bg-lime-50 border-2 border-lime-500 p-4 rounded-2xl text-xs text-slate-800">
-                        <p className="font-black text-lime-900 mb-1">Resposta da Equipe EPP:</p>
-                        {d.resposta_professor}
+
+                    <p className="font-bold text-slate-900 text-sm whitespace-pre-line">{d.pergunta}</p>
+
+                    {d.foto_url && (
+                      <div>
+                        <a href={d.foto_url} target="_blank" rel="noreferrer" className="inline-block">
+                          <img src={d.foto_url} alt="Anexo da dúvida" className="max-h-56 rounded-2xl border border-slate-300 hover:opacity-90" />
+                        </a>
+                      </div>
+                    )}
+
+                    {d.audio_aluno_url && (
+                      <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 max-w-md">
+                        <p className="text-[10px] font-black uppercase text-slate-500 mb-1">Seu áudio enviado:</p>
+                        <audio controls src={d.audio_aluno_url} className="w-full h-9" />
+                      </div>
+                    )}
+
+                    {(d.resposta || d.audio_professor_url) && (
+                      <div className="bg-lime-50 border-2 border-lime-400 p-4 rounded-2xl text-sm text-slate-800 space-y-2">
+                        <p className="text-xs font-black uppercase text-lime-800">Resposta da Equipe EPP:</p>
+                        {d.resposta && <p className="whitespace-pre-line">{d.resposta}</p>}
+                        {d.audio_professor_url && (
+                          <div className="pt-1 max-w-md">
+                            <p className="text-[10px] font-black uppercase text-lime-800 mb-1">Explicação em Áudio do Professor:</p>
+                            <audio controls src={d.audio_professor_url} className="w-full h-9" />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1458,55 +1691,6 @@ export default function PortalAluno() {
               </div>
             </div>
           )}
-
-          {/* PLANO IA, ERROS, SIMULADOS, BIBLIOTECA, RANKING E DESEMPENHO */}
-          {secaoAtiva === 'plano' && (
-            <div className="space-y-6 max-w-4xl animate-fade-up">
-              <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[5px_5px_0px_#F59E0B] space-y-4">
-                <h1 className="text-2xl font-black">Plano de Estudos IA Sob Demanda</h1>
-                <div className="grid sm:grid-cols-3 gap-3">
-                  <input type="text" value={demandaObjetivo} onChange={(e) => setDemandaObjetivo(e.target.value)} placeholder="Qual sua meta ou prova esta semana?" className="sm:col-span-2 p-3.5 border-2 border-slate-300 rounded-2xl text-xs" />
-                  <select value={horasEstudo} onChange={(e) => setHorasEstudo(e.target.value)} className="p-3.5 border-2 border-slate-300 rounded-2xl text-xs font-bold bg-white">
-                    <option>30 minutos</option><option>1 hora</option><option>2 horas</option>
-                  </select>
-                </div>
-                <button onClick={gerarPlanoEstudosIA} disabled={gerandoPlano} className="bg-slate-950 text-amber-400 font-black text-xs px-6 py-3.5 rounded-2xl cursor-pointer">
-                  {gerandoPlano ? 'Montando plano...' : 'Gerar Plano Semanal Conectado'}
-                </button>
-              </div>
-              {planoAtivo && (
-                <div className="grid md:grid-cols-2 gap-4">
-                  {planoAtivo.dias?.map((d: any, idx: number) => (
-                    <div key={idx} className="bg-white p-5 rounded-3xl border-2 border-slate-200 space-y-2">
-                      <span className="text-xs font-black bg-amber-400 px-3 py-1 rounded-full">{d.dia} • {d.duracao}</span>
-                      <h3 className="font-black text-base">{d.foco}</h3>
-                      <p className="text-xs text-slate-600">{d.atividade}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {secaoAtiva === 'erros' && (
-            <div className="space-y-4 max-w-4xl animate-fade-up">
-              <h1 className="text-2xl font-black">Caderno de Erros ({questoesParaRevisar.length})</h1>
-              {questoesParaRevisar.map((q) => (
-                <div key={q.id} className="bg-white p-5 rounded-3xl border-2 border-red-200 space-y-3">
-                  <p className="text-xs font-black text-red-600">{q.disciplina} • {q.titulo}</p>
-                  <p className="text-sm font-bold">{q.enunciado}</p>
-                  <div className="grid sm:grid-cols-2 gap-2">
-                    {['A', 'B', 'C', 'D'].map(l => (
-                      <button key={l} onClick={() => responderQuestao(q, l, true)} className="p-3 border rounded-xl text-left text-xs font-bold hover:bg-slate-50 cursor-pointer">
-                        {l}) {q[`alternativa_${l.toLowerCase()}`]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
           {secaoAtiva === 'simulados' && (
             <div className="space-y-4 max-w-4xl animate-fade-up">
               <h1 className="text-2xl font-black">Simulados Cronometrados</h1>
@@ -1783,6 +1967,9 @@ export default function PortalAluno() {
     </div>
   );
 }
+
+
+
 
 
 
