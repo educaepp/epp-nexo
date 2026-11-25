@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   BookOpen, CheckCircle2, Flame, ShieldCheck, ArrowRight, 
-  Loader2, ExternalLink, Phone, Instagram, Baby 
+  Loader2, ExternalLink, Phone, Baby 
 } from 'lucide-react';
 
 export default function HomePage() {
@@ -161,7 +161,12 @@ export default function HomePage() {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs px-5 py-3.5 rounded-2xl border-2 border-slate-900 shadow-[3px_3px_0px_#F59E0B]"
             >
-              <Instagram className="w-4 h-4 text-amber-400" /> @educaepp
+              <svg className="w-4 h-4 text-amber-400 fill-none stroke-current" strokeWidth="2" viewBox="0 0 24 24">
+                <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+                <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+                <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+              </svg>
+              @educaepp
             </a>
           </div>
         </div>
