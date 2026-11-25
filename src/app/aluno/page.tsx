@@ -22,6 +22,15 @@ export default function PortalAluno() {
 
   const [atividades, setAtividades] = useState<any[]>([]);
   const [simulados, setSimulados] = useState<any[]>([]);
+  const [simuladoEmAndamento, setSimuladoEmAndamento] = useState<any | null>(null);
+  const [questoesSimuladoAtual, setQuestoesSimuladoAtual] = useState<any[]>([]);
+  const [respostasSimulado, setRespostasSimulado] = useState<Record<string, string>>({});
+  const [tempoRestanteSimulado, setTempoRestanteSimulado] = useState(0);
+  const [tempoRestante, setTempoRestante] = useState<number>(0);
+  const [resultadoSimulado, setResultadoSimulado] = useState<any | null>(null);
+  const [simRapidoQtd, setSimRapidoQtd] = useState(5);
+  const [simRapidoDisc, setSimRapidoDisc] = useState('Todas');
+  const [simRapidoMinutos, setSimRapidoMinutos] = useState(15);
   const [temaAtivo, setTemaAtivo] = useState<any>(null);
   const [minhasRedacoes, setMinhasRedacoes] = useState<any[]>([]);
   const [livros, setLivros] = useState<any[]>([]);
@@ -69,12 +78,6 @@ export default function PortalAluno() {
   const [incluirGabaritoPdf, setIncluirGabaritoPdf] = useState(true);
   const [modalPreviewPdfAberto, setModalPreviewPdfAberto] = useState(false);
 
-  // Simulado
-  const [simuladoEmAndamento, setSimuladoEmAndamento] = useState<any>(null);
-  const [tempoRestante, setTempoRestante] = useState<number>(0);
-  const [respostasSimulado, setRespostasSimulado] = useState<Record<string, string>>({});
-  const [resultadoSimulado, setResultadoSimulado] = useState<{ acertos: number; total: number } | null>(null);
-
   // Biblioteca
   const [pdfAberto, setPdfAberto] = useState<any>(null);
 
@@ -95,6 +98,67 @@ export default function PortalAluno() {
     { nome: 'Humanas', subtitulo: 'História & Geografia', cor: 'from-violet-600 to-slate-900' },
   ];
 
+  useEffect(() => {
+    if (!simuladoEmAndamento || resultadoSimulado) return;
+    if (tempoRestanteSimulado <= 0) {
+      finalizarSimuladoCronometrado();
+      return;
+    }
+    const timerSim = setInterval(() => {
+      setTempoRestanteSimulado(t => (t > 0 ? t - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timerSim);
+  }, [simuladoEmAndamento, tempoRestanteSimulado, resultadoSimulado]);
+
+  const iniciarProvaSimulado = (titulo: string, duracaoMin: number, listaQuestoes: any[], idSim: string) => {
+    if (listaQuestoes.length === 0) {
+      alert('Ainda não há questões suficientes cadastradas para este filtro.');
+      return;
+    }
+    setSimuladoEmAndamento({ id: idSim, titulo, duracaoMin });
+    setQuestoesSimuladoAtual(listaQuestoes);
+    setRespostasSimulado({});
+    setTempoRestanteSimulado(duracaoMin * 60);
+    setResultadoSimulado(null);
+  };
+
+  const finalizarSimuladoCronometrado = async () => {
+    if (!simuladoEmAndamento || resultadoSimulado) return;
+    let acertos = 0;
+    const registrosParaSalvar: any[] = [];
+
+    questoesSimuladoAtual.forEach(q => {
+      const marcada = respostasSimulado[q.id] || '';
+      const acertou = marcada === q.correta;
+      if (acertou) acertos++;
+      if (marcada && usuario?.email) {
+        registrosParaSalvar.push({
+          aluno_email: usuario.email,
+          atividade_id: q.id,
+          disciplina: q.disciplina,
+          resposta_escolhida: marcada,
+          acertou
+        });
+      }
+    });
+
+    if (registrosParaSalvar.length > 0) {
+      await supabase.from('respostas_alunos').insert(registrosParaSalvar);
+      carregarDados(usuario);
+    }
+
+    const total = questoesSimuladoAtual.length;
+    const percentual = Math.round((acertos / total) * 100);
+    const xpGanho = 30 + acertos * 10;
+    ganharXP(xpGanho);
+
+    setResultadoSimulado({
+      acertos,
+      total,
+      percentual,
+      xpGanho
+    });
+  };
   useEffect(() => {
     const userStr = localStorage.getItem('epp_usuario');
     if (!userStr) { router.push('/login'); return; }
@@ -1692,37 +1756,255 @@ export default function PortalAluno() {
             </div>
           )}
           {secaoAtiva === 'simulados' && (
-            <div className="space-y-4 max-w-4xl animate-fade-up">
-              <h1 className="text-2xl font-black">Simulados Cronometrados</h1>
-              {resultadoSimulado && <div className="bg-lime-400 p-4 rounded-2xl font-black text-sm">Você acertou {resultadoSimulado.acertos} de {resultadoSimulado.total}!</div>}
-              {simuladoEmAndamento ? (
-                <div className="space-y-4">
-                  <div className="bg-slate-900 text-white p-4 rounded-2xl flex justify-between items-center">
-                    <span className="font-black">{simuladoEmAndamento.titulo}</span>
-                    <button onClick={finalizarSimulado} className="bg-lime-400 text-slate-950 font-black text-xs px-4 py-2 rounded-xl cursor-pointer">Finalizar</button>
-                  </div>
-                  {atividades.map((q, i) => (
-                    <div key={q.id} className="bg-white p-5 rounded-2xl border space-y-2">
-                      <p className="text-xs font-black">0{i + 1}. {q.enunciado}</p>
-                      {['A', 'B', 'C', 'D'].map(l => (
-                        <button key={l} onClick={() => setRespostasSimulado(p => ({ ...p, [q.id]: l }))} className={`block w-full text-left p-2.5 rounded-xl border text-xs ${respostasSimulado[q.id] === l ? 'bg-amber-300 font-bold' : ''}`}>
-                          {l}) {q[`alternativa_${l.toLowerCase()}`]}
-                        </button>
-                      ))}
+            <div className="space-y-6 max-w-5xl animate-fade-up">
+              {!simuladoEmAndamento ? (
+                <>
+                  {/* CABEÇALHO */}
+                  <div className="bg-slate-950 text-white p-7 rounded-3xl border-2 border-slate-900 shadow-[6px_6px_0px_#F59E0B] flex flex-wrap justify-between items-center gap-4">
+                    <div>
+                      <span className="text-[10px] font-black uppercase bg-amber-400 text-slate-950 px-3 py-1 rounded-full">
+                        Treino Estilo Prova • {usuario.serie}
+                      </span>
+                      <h1 className="text-2xl sm:text-3xl font-black mt-2">Simulados Cronometrados EPP</h1>
+                      <p className="text-xs text-slate-300 mt-1">
+                        Treine gestão de tempo como no IFPE, ETE-PE e OBMEP. Ao finalizar, seus erros vão direto para o Caderno de Erros!
+                      </p>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                simulados.map(s => (
-                  <div key={s.id} className="bg-white p-5 rounded-3xl border-2 border-slate-900 flex justify-between items-center">
-                    <h3 className="font-black">{s.titulo} ({s.duracao_minutos} min)</h3>
-                    <button onClick={() => iniciarSimulado(s)} className="bg-amber-500 font-black text-xs px-5 py-2.5 rounded-xl border-2 border-slate-900 cursor-pointer">Iniciar</button>
                   </div>
-                ))
+
+                  {/* GERADOR DE SIMULADO RELAMPAGO SOB DEMANDA */}
+                  <div className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-5 h-5 text-amber-500" />
+                      <h2 className="font-black text-lg">Simulado Relâmpago (Gerar Agora)</h2>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Monte um treino cronometrado instantâneo com as questões disponíveis no banco da sua série.
+                    </p>
+
+                    <div className="grid sm:grid-cols-4 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Área / Disciplina</label>
+                        <select
+                          value={simRapidoDisc}
+                          onChange={e => setSimRapidoDisc(e.target.value)}
+                          className="w-full border-2 border-slate-300 p-3 rounded-2xl font-bold text-xs bg-white"
+                        >
+                          <option value="Todas">Todas as Áreas (Misto)</option>
+                          <option value="Matemática">Matemática</option>
+                          <option value="Linguagens">Linguagens</option>
+                          <option value="Ciências">Ciências</option>
+                          <option value="Humanas">Humanas</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Nº de Questões</label>
+                        <select
+                          value={simRapidoQtd}
+                          onChange={e => setSimRapidoQtd(Number(e.target.value))}
+                          className="w-full border-2 border-slate-300 p-3 rounded-2xl font-bold text-xs bg-white"
+                        >
+                          <option value={5}>5 Questões (Rápido)</option>
+                          <option value={10}>10 Questões (Médio)</option>
+                          <option value={15}>15 Questões (Intensivo)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Tempo de Prova</label>
+                        <select
+                          value={simRapidoMinutos}
+                          onChange={e => setSimRapidoMinutos(Number(e.target.value))}
+                          className="w-full border-2 border-slate-300 p-3 rounded-2xl font-bold text-xs bg-white"
+                        >
+                          <option value={10}>10 minutos</option>
+                          <option value={15}>15 minutos</option>
+                          <option value={30}>30 minutos</option>
+                          <option value={45}>45 minutos</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-end">
+                        <button
+                          onClick={() => {
+                            const pool = atividades.filter(a => !a.simulado_id && (simRapidoDisc === 'Todas' || a.disciplina === simRapidoDisc));
+                            const embaralhadas = [...pool].sort(() => Math.random() - 0.5).slice(0, simRapidoQtd);
+                            iniciarProvaSimulado(
+                              `Simulado Relâmpago • ${simRapidoDisc}`,
+                              simRapidoMinutos,
+                              embaralhadas,
+                              'rapido'
+                            );
+                          }}
+                          className="w-full bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs py-3.5 px-4 rounded-2xl border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                          <Play className="w-4 h-4" /> Iniciar Agora
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SIMULADOS OFICIAIS AGENDADOS PELA GESTAO */}
+                  <div className="space-y-3">
+                    <h2 className="font-black text-base text-slate-900">Simulados Oficiais da Gestão EPP</h2>
+                    {simulados.length === 0 ? (
+                      <div className="bg-white border-2 border-dashed border-slate-300 p-8 rounded-3xl text-center space-y-2">
+                        <p className="font-black text-sm text-slate-700">Nenhum simulado oficial publicado no momento</p>
+                        <p className="text-xs text-slate-500">
+                          Enquanto a equipe EPP prepara o próximo simulado oficial, utilize o <strong>Simulado Relâmpago</strong> acima para treinar com cronômetro!
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {simulados.map(sim => {
+                          const questoesDoSim = atividades.filter(a => a.simulado_id === sim.id);
+                          const listaFinal = questoesDoSim.length > 0 ? questoesDoSim : atividades.slice(0, 10);
+                          return (
+                            <div key={sim.id} className="bg-white p-6 rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] flex flex-col justify-between gap-4">
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-[10px] font-black uppercase bg-slate-900 text-amber-400 px-2.5 py-0.5 rounded-full">
+                                    Simulado Oficial
+                                  </span>
+                                  <span className="text-xs font-bold text-slate-500 flex items-center gap-1">
+                                    <Clock className="w-3.5 h-3.5" /> {sim.duracao_minutos || 45} min
+                                  </span>
+                                </div>
+                                <h3 className="font-black text-lg text-slate-950">{sim.titulo}</h3>
+                                <p className="text-xs text-slate-500">{listaFinal.length} questões • Vale +50 XP de conclusão</p>
+                              </div>
+                              <button
+                                onClick={() => iniciarProvaSimulado(sim.titulo, sim.duracao_minutos || 45, listaFinal, sim.id)}
+                                className="w-full bg-slate-950 hover:bg-slate-800 text-amber-400 font-black text-xs py-3 rounded-2xl flex items-center justify-center gap-2 cursor-pointer"
+                              >
+                                <Play className="w-4 h-4" /> Iniciar Prova Oficial
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                /* AMBIENTE DE PROVA EM ANDAMENTO OU RESULTADO */
+                <div className="space-y-6">
+                  {/* BARRA FIXA DO CRONOMETRO */}
+                  <div className="sticky top-20 z-20 bg-slate-950 text-white p-4 sm:p-5 rounded-3xl border-2 border-slate-900 shadow-lg flex flex-wrap justify-between items-center gap-3">
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-amber-400">Prova em Andamento</span>
+                      <h2 className="font-black text-base sm:text-lg">{simuladoEmAndamento.titulo}</h2>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {!resultadoSimulado && (
+                        <div className={`px-4 py-2 rounded-2xl font-mono font-black text-lg border-2 ${tempoRestanteSimulado < 120 ? 'bg-red-600 border-red-300 animate-pulse' : 'bg-slate-900 border-amber-400 text-amber-400'}`}>
+                          {String(Math.floor(tempoRestanteSimulado / 60)).padStart(2, '0')}:{String(tempoRestanteSimulado % 60).padStart(2, '0')}
+                        </div>
+                      )}
+
+                      {!resultadoSimulado ? (
+                        <button
+                          onClick={finalizarSimuladoCronometrado}
+                          className="bg-lime-400 hover:bg-lime-300 text-slate-950 font-black text-xs px-4 py-3 rounded-2xl border-2 border-slate-900 cursor-pointer"
+                        >
+                          Entregar Prova ({Object.keys(respostasSimulado).length}/{questoesSimuladoAtual.length})
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => { setSimuladoEmAndamento(null); setResultadoSimulado(null); }}
+                          className="bg-amber-400 text-slate-950 font-black text-xs px-4 py-3 rounded-2xl cursor-pointer"
+                        >
+                          Voltar aos Simulados
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* CARTAO DE RESULTADO FINAL */}
+                  {resultadoSimulado && (
+                    <div className="bg-lime-50 border-2 border-lime-500 p-6 rounded-3xl flex flex-wrap justify-between items-center gap-4">
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-black uppercase bg-lime-400 text-slate-950 px-3 py-1 rounded-full">
+                          Simulado Concluído! +{resultadoSimulado.xpGanho} XP
+                        </span>
+                        <h3 className="text-2xl font-black text-slate-950">
+                          Você acertou {resultadoSimulado.acertos} de {resultadoSimulado.total} questões ({resultadoSimulado.percentual}%)
+                        </h3>
+                        <p className="text-xs text-slate-600">
+                          Confira abaixo o gabarito comentado de cada questão. As questões erradas já foram salvas no seu Caderno de Erros!
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => { setSimuladoEmAndamento(null); setResultadoSimulado(null); setSecaoAtiva('desempenho'); }}
+                        className="bg-slate-950 text-amber-400 font-black text-xs px-5 py-3 rounded-2xl cursor-pointer"
+                      >
+                        Ver no Raio-X & Notas →
+                      </button>
+                    </div>
+                  )}
+
+                  {/* LISTA DE QUESTOES DA PROVA */}
+                  <div className="space-y-4">
+                    {questoesSimuladoAtual.map((q, idx) => {
+                      const escolhida = respostasSimulado[q.id];
+                      const opcoes = [
+                        { letra: 'A', texto: q.opcao_a },
+                        { letra: 'B', texto: q.opcao_b },
+                        { letra: 'C', texto: q.opcao_c },
+                        { letra: 'D', texto: q.opcao_d }
+                      ].filter(op => op.texto);
+
+                      return (
+                        <div key={q.id} className="bg-white p-6 rounded-3xl border-2 border-slate-200 space-y-4">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-black bg-slate-900 text-amber-400 px-3 py-1 rounded-full">
+                              Questão {idx + 1} • {q.disciplina}
+                            </span>
+                            {q.banca && <span className="text-[11px] font-bold text-slate-400">{q.banca}</span>}
+                          </div>
+
+                          <p className="font-bold text-sm text-slate-900 whitespace-pre-line">{q.enunciado}</p>
+
+                          <div className="space-y-2">
+                            {opcoes.map(op => {
+                              const selecionada = escolhida === op.letra;
+                              let estilo = 'border-slate-200 hover:border-slate-400 bg-white';
+                              if (!resultadoSimulado && selecionada) {
+                                estilo = 'border-slate-950 bg-amber-100 font-bold';
+                              } else if (resultadoSimulado) {
+                                if (op.letra === q.correta) estilo = 'border-lime-600 bg-lime-100 font-bold text-lime-950';
+                                else if (selecionada && op.letra !== q.correta) estilo = 'border-red-500 bg-red-100 text-red-950';
+                              }
+
+                              return (
+                                <button
+                                  key={op.letra}
+                                  disabled={!!resultadoSimulado}
+                                  onClick={() => setRespostasSimulado(prev => ({ ...prev, [q.id]: op.letra }))}
+                                  className={`w-full text-left p-3.5 rounded-2xl border-2 text-xs flex items-start gap-3 transition cursor-pointer ${estilo}`}
+                                >
+                                  <span className="font-black px-2 py-0.5 rounded-lg bg-slate-900 text-white text-[11px]">{op.letra}</span>
+                                  <span>{op.texto}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {resultadoSimulado && q.explicacao && (
+                            <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl text-xs text-slate-700">
+                              <strong>Resolução Comentada:</strong> {q.explicacao}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
           )}
-
           {secaoAtiva === 'biblioteca' && (
             <div className="grid sm:grid-cols-3 gap-5 max-w-4xl animate-fade-up">
               {livros.map(l => (
@@ -1967,6 +2249,9 @@ export default function PortalAluno() {
     </div>
   );
 }
+
+
+
 
 
 
