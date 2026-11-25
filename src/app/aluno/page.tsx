@@ -672,6 +672,7 @@ export default function PortalAluno() {
 
   if (!usuario) return null;
 
+  const totalQuestoesSerie = atividades.filter(a => !a.simulado_id).length;
   const paisesDisponiveis = ['Todos', ...Array.from(new Set(atividades.map(a => a.pais || 'Brasil')))];
 
   const questoesFiltradas = atividades
@@ -1088,7 +1089,13 @@ export default function PortalAluno() {
                 <div className="flex flex-wrap justify-between items-center gap-3">
                   <div>
                     <h1 className="text-2xl font-black flex items-center gap-2">
-                      <Globe className="w-6 h-6 text-amber-500" /> Banco de Questões & Caderno PDF <button onClick={() => carregarDados(usuario)} className="ml-2 text-[11px] bg-amber-100 hover:bg-amber-200 text-amber-900 px-2.5 py-1 rounded-full border border-amber-400 cursor-pointer">Atualizar</button>
+                      <Globe className="w-6 h-6 text-amber-500" /> Banco de Questões & Caderno PDF
+                      <span className="ml-1 text-xs font-black bg-slate-950 text-amber-400 px-3 py-1 rounded-full">
+                        {totalQuestoesSerie} {totalQuestoesSerie === 1 ? 'questão cadastrada' : 'questões cadastradas'} ({usuario.serie})
+                      </span>
+                      <button onClick={() => carregarDados(usuario)} className="text-[11px] bg-amber-100 hover:bg-amber-200 text-amber-900 px-2.5 py-1 rounded-full border border-amber-400 cursor-pointer">
+                        Atualizar
+                      </button>
                     </h1>
                     <p className="text-xs text-slate-500 mt-0.5">
                       Responda online para ganhar XP ou marque as questões que desejar para montar um <strong>Caderno de Questões em PDF</strong>.
@@ -1150,6 +1157,22 @@ export default function PortalAluno() {
                       <option value="Médio">Médio (+25 XP)</option>
                       <option value="Difícil">Difícil (+40 XP)</option>
                     </select>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 text-xs text-slate-600">
+                  <span>
+                    Mostrando <strong className="text-slate-950">{questoesFiltradas.length}</strong> de <strong className="text-slate-950">{totalQuestoesSerie}</strong> questões disponíveis para o <strong>{usuario.serie}</strong>
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {materias.map(m => {
+                      const qtdMat = atividades.filter(a => !a.simulado_id && a.disciplina === m.nome).length;
+                      return (
+                        <span key={m.nome} className="text-[10px] font-bold bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-full">
+                          {m.nome}: <strong>{qtdMat}</strong>
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -1544,4 +1567,5 @@ export default function PortalAluno() {
     </div>
   );
 }
+
 
