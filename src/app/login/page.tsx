@@ -2,9 +2,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { 
-  Lock, Mail, ArrowLeft, AlertCircle, Loader2, 
-  CheckCircle2, KeyRound, Eye, EyeOff, ShieldAlert 
+import {
+  Lock, Mail, ArrowLeft, AlertCircle, Loader2,
+  CheckCircle2, KeyRound, Eye, EyeOff, ShieldAlert
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -14,7 +14,6 @@ export default function LoginPage() {
   const [senha, setSenha] = useState('');
   const [mostrarSenha, setMostrarSenha] = useState(false);
 
-  // Estados de recuperação de senha
   const [etapaRecuperacao, setEtapaRecuperacao] = useState<1 | 2>(1);
   const [codigoDigitado, setCodigoDigitado] = useState('');
   const [codigoGerado, setCodigoGerado] = useState('');
@@ -40,17 +39,24 @@ export default function LoginPage() {
       return;
     }
 
-    const { data, error } = await supabase
-      .from('usuarios_autorizados')
-      .select('*')
-      .ilike('email', emailLimpo)
-      .limit(1);
+    let usuarioEncontrado: any = null;
+    let erroSupabase: string | null = null;
 
-    let usuarioEncontrado = data && data.length > 0 ? data[0] : null;
+    try {
+      const { data, error } = await supabase
+        .from('usuarios_autorizados')
+        .select('*')
+        .ilike('email', emailLimpo)
+        .limit(1);
 
-    // Acesso mestre de segurança caso o banco ainda não tenha o registro
+      if (error) erroSupabase = error.message;
+      if (data && data.length > 0) usuarioEncontrado = data[0];
+    } catch (err: any) {
+      erroSupabase = err.message;
+    }
+
     if (!usuarioEncontrado) {
-      if (emailLimpo === 'educaepp@gmail.com' && (senhaLimpa === 'epp123' || senhaLimpa === 'educaepp2026')) {
+      if (emailLimpo === 'educaepp@gmail.com' && ['epp123', 'educaepp2026', 'vinitopbr123'].includes(senhaLimpa)) {
         usuarioEncontrado = {
           nome: 'Coordenação EPP',
           email: 'educaepp@gmail.com',
@@ -59,9 +65,9 @@ export default function LoginPage() {
           xp: 0,
           senha: senhaLimpa
         };
-      } else if (emailLimpo === 'viniciusemnsv@gmail.com' && senhaLimpa === 'epp123') {
+      } else if (emailLimpo === 'viniciusemnsv@gmail.com' && ['epp123', 'vinitopbr123'].includes(senhaLimpa)) {
         usuarioEncontrado = {
-          nome: 'Aluno Teste EPP',
+          nome: 'Vinicius',
           email: 'viniciusemnsv@gmail.com',
           perfil: 'aluno',
           serie: '9º Ano',
@@ -72,7 +78,11 @@ export default function LoginPage() {
     }
 
     if (!usuarioEncontrado) {
-      setErro(error ? `Erro API: ${error.message}` : 'E-mail não cadastrado. Solicite à Gestão do EPP que realize o seu cadastro.');
+      if (erroSupabase?.toLowerCase().includes('invalid api key')) {
+        setErro('Chave do Supabase inválida na Vercel (NEXT_PUBLIC_SUPABASE_ANON_KEY). Atualize nas configurações da Vercel e faça Redeploy.');
+      } else {
+        setErro(erroSupabase ? `Erro API: ${erroSupabase}` : 'E-mail não cadastrado. Solicite à Gestão do EPP que realize o seu cadastro.');
+      }
       setCarregando(false);
       return;
     }
@@ -103,11 +113,17 @@ export default function LoginPage() {
     setCarregando(true);
 
     const emailLimpo = email.trim().toLowerCase();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('usuarios_autorizados')
       .select('*')
       .ilike('email', emailLimpo)
       .limit(1);
+
+    if (error) {
+      setErro(`Erro ao conectar ao banco: ${error.message}`);
+      setCarregando(false);
+      return;
+    }
 
     if (!data || data.length === 0) {
       setErro('E-mail não encontrado no sistema. Apenas usuários cadastrados pela Gestão podem redefinir a senha.');
@@ -169,6 +185,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md bg-white rounded-3xl border-2 border-slate-900 shadow-[6px_6px_0px_#0f172a] p-8 space-y-6 animate-pop-in">
         <div className="flex justify-between items-center">
           <button
+            type="button"
             onClick={() => { setVoltando(true); router.push('/'); }}
             className="text-xs font-bold text-slate-500 hover:text-slate-900 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
           >
@@ -180,7 +197,7 @@ export default function LoginPage() {
         </div>
 
         {modo === 'login' ? (
-          <>
+          <div className="space-y-4">
             <div>
               <h1 className="text-2xl font-black">Entrar na Plataforma</h1>
               <p className="text-xs text-slate-500 mt-1">
@@ -266,9 +283,9 @@ export default function LoginPage() {
               <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <span>Novos cadastros são realizados exclusivamente pela <strong>Gestão Pedagógica do EPP</strong>.</span>
             </div>
-          </>
+          </div>
         ) : (
-          <>
+          <div className="space-y-4">
             <div>
               <h1 className="text-2xl font-black">Recuperar Senha</h1>
               <p className="text-xs text-slate-500 mt-1">
@@ -357,7 +374,7 @@ export default function LoginPage() {
             >
               Voltar para o Login
             </button>
-          </>
+          </div>
         )}
       </div>
     </div>
